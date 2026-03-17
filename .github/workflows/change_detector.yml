@@ -1,0 +1,56 @@
+name: Change Detector
+
+on:
+  schedule:
+    # Every 3 hours
+    - cron: '0 */3 * * *'
+  workflow_dispatch: # Manual trigger for testing
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      # Restore snapshot from previous run
+      - name: Restore snapshot
+        uses: actions/cache/restore@v4
+        with:
+          path: snapshot.json
+          key: canvas-snapshot
+
+      - name: Run change detector
+        env:
+          CANVAS_API_URL: ${{ secrets.CANVAS_API_URL }}
+          CANVAS_API_TOKEN: ${{ secrets.CANVAS_API_TOKEN }}
+          CANVAS_EMAIL: ${{ secrets.CANVAS_EMAIL }}
+          CANVAS_PASSWORD: ${{ secrets.CANVAS_PASSWORD }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          USER_WHATSAPP_TO: ${{ secrets.USER_WHATSAPP_TO }}
+        run: python -m src.detector
+
+      # Save updated snapshot for next run
+      # Delete old cache first (cache keys are immutable)
+      - name: Delete old snapshot cache
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh cache delete canvas-snapshot --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+
+      - name: Save snapshot
+        uses: actions/cache/save@v4
+        with:
+          path: snapshot.json
+          key: canvas-snapshot

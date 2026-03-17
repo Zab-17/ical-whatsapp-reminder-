@@ -1,0 +1,36 @@
+name: Daily Assignment Reminder
+
+on:
+  schedule:
+    # 5:00 AM UTC = 7:00 AM Cairo (EET, UTC+2)
+    - cron: '0 5 * * *'
+  workflow_dispatch: # Manual trigger for testing
+
+jobs:
+  send-reminder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Send daily reminder
+        env:
+          CANVAS_API_URL: ${{ secrets.CANVAS_API_URL }}
+          CANVAS_API_TOKEN: ${{ secrets.CANVAS_API_TOKEN }}
+          CANVAS_EMAIL: ${{ secrets.CANVAS_EMAIL }}
+          CANVAS_PASSWORD: ${{ secrets.CANVAS_PASSWORD }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          USER_WHATSAPP_TO: ${{ secrets.USER_WHATSAPP_TO }}
+        run: python -m src.reminder
