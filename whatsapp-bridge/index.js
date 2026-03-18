@@ -13,6 +13,10 @@ let isConnected = false;
 
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: process.env.WA_SESSION_PATH || './auth_session' }),
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/niclaslein/whatsapp-web.js-version/main/2.3000.1035370989-alpha.html',
+    },
     puppeteer: {
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
