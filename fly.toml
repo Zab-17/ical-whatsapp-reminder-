@@ -16,6 +16,7 @@ primary_region = 'fra'
   DATABASE_PATH = '/data/canvas_reminder.db'
   BRIDGE_PORT = '3001'
   PYTHON_WEBHOOK_URL = 'http://localhost:8000/webhook/whatsapp'
+  WA_SESSION_PATH = '/data/wa_session'
 
 [mounts]
   source = 'canvas_data'
