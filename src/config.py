@@ -6,15 +6,15 @@ class Settings(BaseSettings):
 
     # Canvas LMS
     canvas_api_url: str = "https://aucegypt.instructure.com"
-    canvas_api_token: str = ""       # Optional if using email/password
-    canvas_email: str = ""           # For browser-based login
-    canvas_password: str = ""        # For browser-based login
-    canvas_cookies_b64: str = ""     # Base64-encoded cookies for cloud deployment
+    canvas_api_token: str = ""
+    canvas_email: str = ""
+    canvas_password: str = ""
+    canvas_cookies_b64: str = ""
 
-    # WhatsApp (Meta Cloud API)
-    whatsapp_phone_id: str           # Phone Number ID from Meta dashboard
-    whatsapp_access_token: str       # System User access token
-    user_whatsapp_to: str            # Recipient phone number (e.g., 201154069714)
+    # WhatsApp (Green API)
+    green_api_instance_id: str
+    green_api_token: str
+    user_whatsapp_to: str  # Phone number without + (e.g., 201154069714)
 
     # Settings
     reminder_hour_utc: int = 5

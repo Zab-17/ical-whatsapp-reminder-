@@ -6,10 +6,9 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import FastAPI, Query, Request, Response
+from fastapi import FastAPI, Request
 
 from src import conversation, whatsapp_service
-from src.config import settings
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -19,8 +18,8 @@ logging.basicConfig(
 
 scheduler = BackgroundScheduler()
 
-# Webhook verify token — set this to any string you choose
-VERIFY_TOKEN = "canvas_reminder_verify"
+# Tracks pending numbered selections per user phone number
+_pending_selections: dict[str, list[dict[str, str]]] = {}
 
 
 def _run_reminder():
@@ -74,68 +73,68 @@ async def health():
     return {"status": "ok", "scheduled_jobs": jobs}
 
 
-@app.get("/webhook/whatsapp")
-async def verify_webhook(
-    hub_mode: str = Query(None, alias="hub.mode"),
-    hub_verify_token: str = Query(None, alias="hub.verify_token"),
-    hub_challenge: str = Query(None, alias="hub.challenge"),
-):
-    """Meta webhook verification endpoint."""
-    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
-        logger.info("Webhook verified")
-        return Response(content=hub_challenge, media_type="text/plain")
-    return Response(content="Forbidden", status_code=403)
-
-
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request):
-    """Handle incoming WhatsApp messages from Meta."""
+    """Handle incoming WhatsApp messages from Green API."""
     body = await request.json()
 
     try:
-        entry = body.get("entry", [{}])[0]
-        changes = entry.get("changes", [{}])[0]
-        value = changes.get("value", {})
-        messages = value.get("messages", [])
+        msg_type = body.get("typeWebhook", "")
 
-        if not messages:
-            return {"status": "no messages"}
+        if msg_type != "incomingMessageReceived":
+            return {"status": "ignored"}
 
-        msg = messages[0]
-        from_number = msg.get("from", "")
-        msg_type = msg.get("type", "")
+        msg_data = body.get("messageData", {})
+        sender = body.get("senderData", {})
+        from_number = sender.get("sender", "").replace("@c.us", "")
 
-        # Extract the user's input based on message type
-        if msg_type == "text":
-            user_input = msg["text"]["body"]
-        elif msg_type == "interactive":
-            interactive = msg["interactive"]
-            if interactive["type"] == "button_reply":
-                user_input = interactive["button_reply"]["id"]
-            elif interactive["type"] == "list_reply":
-                user_input = interactive["list_reply"]["id"]
-            else:
-                user_input = "menu"
-        else:
-            user_input = "menu"
+        # Extract text from message
+        text_data = msg_data.get("textMessageData") or msg_data.get("extendedTextMessageData")
+        if not text_data:
+            return {"status": "no text"}
 
-        logger.info("Received from %s: %s (type: %s)", from_number, user_input, msg_type)
+        user_input = text_data.get("textMessage") or text_data.get("text", "")
+        user_input = user_input.strip()
+
+        logger.info("Received from %s: %s", from_number, user_input)
+
+        # Resolve numbered reply if pending
+        resolved_input = _resolve_numbered_reply(from_number, user_input)
 
         # Route through conversation handler
-        result = conversation.route(user_input)
+        result = conversation.route(resolved_input)
 
         response_body = result["body"]
         buttons = result.get("buttons")
         items = result.get("items")
 
         if items:
+            _pending_selections[from_number] = items
             whatsapp_service.send_list_message(response_body, items, to=from_number)
         elif buttons:
+            _pending_selections[from_number] = buttons
             whatsapp_service.send_button_message(response_body, buttons, to=from_number)
         else:
+            _pending_selections.pop(from_number, None)
             whatsapp_service.send_text(response_body, to=from_number)
 
     except Exception as e:
         logger.error("Error processing webhook: %s", e)
 
     return {"status": "ok"}
+
+
+def _resolve_numbered_reply(phone: str, body: str) -> str:
+    pending = _pending_selections.get(phone)
+    if not pending:
+        return body
+    try:
+        index = int(body) - 1
+        if 0 <= index < len(pending):
+            resolved = pending[index]["id"]
+            logger.info("Resolved numbered reply %s -> %s", body, resolved)
+            _pending_selections.pop(phone, None)
+            return resolved
+    except (ValueError, KeyError, IndexError):
+        pass
+    return body
