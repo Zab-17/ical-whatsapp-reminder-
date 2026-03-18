@@ -40,8 +40,14 @@ client.on('ready', () => {
 
 client.on('disconnected', () => {
     isConnected = false;
-    console.log('WhatsApp disconnected. Restarting...');
-    client.initialize();
+    console.log('WhatsApp disconnected. Restarting in 5s...');
+    setTimeout(() => client.initialize(), 5000);
+});
+
+client.on('auth_failure', (msg) => {
+    console.log('Auth failure:', msg);
+    qrCode = null;
+    isConnected = false;
 });
 
 client.on('message', async (msg) => {
@@ -104,5 +110,10 @@ app.post('/send', async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`WhatsApp bridge running on port ${PORT}`);
-    client.initialize();
+    console.log(`Session path: ${process.env.WA_SESSION_PATH || './auth_session'}`);
+    client.initialize().catch(err => {
+        console.error('Failed to initialize WhatsApp client:', err.message);
+        console.log('Retrying in 10 seconds...');
+        setTimeout(() => client.initialize().catch(e => console.error('Retry failed:', e.message)), 10000);
+    });
 });
