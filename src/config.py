@@ -11,11 +11,10 @@ class Settings(BaseSettings):
     canvas_password: str = ""        # For browser-based login
     canvas_cookies_b64: str = ""     # Base64-encoded cookies for cloud deployment
 
-    # Twilio WhatsApp
-    twilio_account_sid: str
-    twilio_auth_token: str
-    twilio_whatsapp_from: str = "whatsapp:+14155238886"
-    user_whatsapp_to: str
+    # WhatsApp (Meta Cloud API)
+    whatsapp_phone_id: str           # Phone Number ID from Meta dashboard
+    whatsapp_access_token: str       # System User access token
+    user_whatsapp_to: str            # Recipient phone number (e.g., 201154069714)
 
     # Settings
     reminder_hour_utc: int = 5

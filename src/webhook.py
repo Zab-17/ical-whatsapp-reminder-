@@ -6,9 +6,10 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Query, Request, Response
 
 from src import conversation, whatsapp_service
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -18,9 +19,11 @@ logging.basicConfig(
 
 scheduler = BackgroundScheduler()
 
+# Webhook verify token — set this to any string you choose
+VERIFY_TOKEN = "canvas_reminder_verify"
+
 
 def _run_reminder():
-    """Scheduled job: send daily reminder."""
     try:
         from src.reminder import send_daily_reminder
         send_daily_reminder()
@@ -29,7 +32,6 @@ def _run_reminder():
 
 
 def _run_detector():
-    """Scheduled job: run change detector."""
     try:
         from src.detector import detect_changes
         detect_changes()
@@ -40,7 +42,6 @@ def _run_detector():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Schedule reminders at 10 AM, 1 PM, 5 PM, 9 PM Cairo time (UTC+2)
-    # = 8 AM, 11 AM, 3 PM, 7 PM UTC
     for hour_utc in [8, 11, 15, 19]:
         scheduler.add_job(
             _run_reminder,
@@ -50,7 +51,6 @@ async def lifespan(app: FastAPI):
         )
         logger.info("Scheduled reminder at %d:00 UTC", hour_utc)
 
-    # Schedule change detector every 3 hours
     scheduler.add_job(
         _run_detector,
         IntervalTrigger(hours=3),
@@ -61,79 +61,81 @@ async def lifespan(app: FastAPI):
 
     scheduler.start()
     logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))
-
     yield
-
     scheduler.shutdown()
-    logger.info("Scheduler shut down")
 
 
 app = FastAPI(title="Canvas Reminder WhatsApp Bot", lifespan=lifespan)
 
-# Tracks pending numbered selections per user phone number
-_pending_selections: dict[str, list[dict[str, str]]] = {}
-
 
 @app.get("/health")
 async def health():
-    jobs = []
-    for job in scheduler.get_jobs():
-        jobs.append({
-            "id": job.id,
-            "next_run": str(job.next_run_time),
-        })
+    jobs = [{"id": j.id, "next_run": str(j.next_run_time)} for j in scheduler.get_jobs()]
     return {"status": "ok", "scheduled_jobs": jobs}
+
+
+@app.get("/webhook/whatsapp")
+async def verify_webhook(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+):
+    """Meta webhook verification endpoint."""
+    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
+        logger.info("Webhook verified")
+        return Response(content=hub_challenge, media_type="text/plain")
+    return Response(content="Forbidden", status_code=403)
 
 
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request):
-    form = await request.form()
-    body = str(form.get("Body", "")).strip()
-    from_number = str(form.get("From", ""))
-
-    logger.info("Received message from %s: %s", from_number, body)
-
-    # Check if this is a numbered reply to a pending selection
-    resolved_input = _resolve_numbered_reply(from_number, body)
-
-    # Route the input through the conversation handler
-    result = conversation.route(resolved_input)
-
-    response_body = result["body"]
-    buttons = result.get("buttons")
-    items = result.get("items")
-
-    if items:
-        _pending_selections[from_number] = items
-        whatsapp_service.send_list_message(response_body, items, to=from_number)
-    elif buttons:
-        _pending_selections[from_number] = buttons
-        whatsapp_service.send_button_message(response_body, buttons, to=from_number)
-    else:
-        _pending_selections.pop(from_number, None)
-        whatsapp_service.send_text(response_body, to=from_number)
-
-    # Return empty TwiML so Twilio doesn't send a duplicate
-    return Response(
-        content='<Response></Response>',
-        media_type="application/xml",
-    )
-
-
-def _resolve_numbered_reply(phone: str, body: str) -> str:
-    """If the user replied with a number, look up the corresponding button/item ID."""
-    pending = _pending_selections.get(phone)
-    if not pending:
-        return body
+    """Handle incoming WhatsApp messages from Meta."""
+    body = await request.json()
 
     try:
-        index = int(body) - 1
-        if 0 <= index < len(pending):
-            resolved = pending[index]["id"]
-            logger.info("Resolved numbered reply %s -> %s", body, resolved)
-            _pending_selections.pop(phone, None)
-            return resolved
-    except (ValueError, KeyError, IndexError):
-        pass
+        entry = body.get("entry", [{}])[0]
+        changes = entry.get("changes", [{}])[0]
+        value = changes.get("value", {})
+        messages = value.get("messages", [])
 
-    return body
+        if not messages:
+            return {"status": "no messages"}
+
+        msg = messages[0]
+        from_number = msg.get("from", "")
+        msg_type = msg.get("type", "")
+
+        # Extract the user's input based on message type
+        if msg_type == "text":
+            user_input = msg["text"]["body"]
+        elif msg_type == "interactive":
+            interactive = msg["interactive"]
+            if interactive["type"] == "button_reply":
+                user_input = interactive["button_reply"]["id"]
+            elif interactive["type"] == "list_reply":
+                user_input = interactive["list_reply"]["id"]
+            else:
+                user_input = "menu"
+        else:
+            user_input = "menu"
+
+        logger.info("Received from %s: %s (type: %s)", from_number, user_input, msg_type)
+
+        # Route through conversation handler
+        result = conversation.route(user_input)
+
+        response_body = result["body"]
+        buttons = result.get("buttons")
+        items = result.get("items")
+
+        if items:
+            whatsapp_service.send_list_message(response_body, items, to=from_number)
+        elif buttons:
+            whatsapp_service.send_button_message(response_body, buttons, to=from_number)
+        else:
+            whatsapp_service.send_text(response_body, to=from_number)
+
+    except Exception as e:
+        logger.error("Error processing webhook: %s", e)
+
+    return {"status": "ok"}
