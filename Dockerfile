@@ -1,25 +1,20 @@
 FROM node:20-slim
 
-# Install Python and Chromium
+# Install system deps for Chromium (Puppeteer downloads its own)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
-    chromium libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
     libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
     libx11-xcb1 libxcb1 libxext6 libxfixes3 libxi6 libxtst6 \
-    fonts-liberation libappindicator3-1 xdg-utils \
+    fonts-liberation xdg-utils ca-certificates wget \
     && rm -rf /var/lib/apt/lists/*
-
-# Point Puppeteer to system Chromium
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app
 
-# Install Node.js dependencies (skip Chromium download)
-COPY whatsapp-bridge/package.json whatsapp-bridge/package-lock.json ./whatsapp-bridge/
-RUN cd whatsapp-bridge && PUPPETEER_SKIP_DOWNLOAD=true npm ci --production
+# Install Node.js deps — let Puppeteer download its own Chromium
+COPY whatsapp-bridge/package.json ./whatsapp-bridge/
+RUN cd whatsapp-bridge && npm install --production
 
 # Install Python dependencies
 COPY requirements.txt .
