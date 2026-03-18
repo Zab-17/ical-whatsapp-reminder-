@@ -458,103 +458,41 @@ LANDING_HTML = """
                 </div>
             </div>
 
-            <!-- Step 2: Login to Canvas + Bookmarklet -->
+            <!-- Step 2: Install Extension -->
             <div id="step2" class="step">
                 <h2 style="font-size:18px;font-weight:600;margin-bottom:16px">Connect your Canvas</h2>
                 <div class="hint-box">
                     <span>1️⃣</span>
-                    <p>Click the button below to open Canvas. Log in normally with your AUC account.</p>
+                    <p>Install the Canvas Reminder Chrome extension</p>
                 </div>
-                <a href="https://aucegypt.instructure.com" target="_blank" class="btn" style="margin-bottom:16px;text-decoration:none">
-                    Open Canvas Login
-                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                <a href="/extension" class="btn" style="margin-bottom:16px;text-decoration:none">
+                    Download Extension
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                 </a>
                 <div class="hint-box">
                     <span>2️⃣</span>
-                    <p>Enter your AUC credentials below. They're used <strong>once</strong> to log in and <strong>never stored</strong>.</p>
-                </div>
-                <div class="field">
-                    <label>AUC Email</label>
-                    <input type="email" id="email" placeholder="you@aucegypt.edu" autocomplete="email">
-                </div>
-                <div class="field">
-                    <label>Password</label>
-                    <input type="password" id="password" placeholder="Your AUC password">
+                    <p>Open the extension, enter your name and WhatsApp number</p>
                 </div>
                 <div class="hint-box">
-                    <span>📱</span>
-                    <p>After clicking Connect, approve the <strong>2FA request</strong> on your Microsoft Authenticator app.</p>
+                    <span>3️⃣</span>
+                    <p>Go to <a href="https://aucegypt.instructure.com" target="_blank" style="color:#3b82f6">Canvas</a> and log in normally. The extension connects your account automatically.</p>
                 </div>
-                <button class="btn" onclick="captureSession()" id="captureBtn" style="background:linear-gradient(135deg,#059669,#047857)">
-                    Connect Canvas
-                </button>
-                <div id="captureError" style="display:none;margin-top:12px;padding:12px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:10px;color:#f87171;font-size:13px"></div>
-            </div>
-
-            <!-- Step 3: Success -->
-            <div id="step3" class="step" style="text-align:center">
-                <div class="success-check" style="width:72px;height:72px;margin:0 auto 24px;background:rgba(34,197,94,0.1);border:2px solid rgba(34,197,94,0.3);border-radius:50%;display:flex;align-items:center;justify-content:center">
-                    <span style="font-size:28px;color:#22c55e">✓</span>
+                <div class="hint-box">
+                    <span>🔒</span>
+                    <p>We never see your password. The extension only reads your Canvas session after you log in.</p>
                 </div>
-                <div style="font-size:22px;font-weight:700;background:linear-gradient(135deg,#22c55e,#4ade80);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px">You're all set!</div>
-                <p style="color:var(--text-muted);font-size:14px;line-height:1.6">Send <strong style="color:#fff">hi</strong> on WhatsApp to start.<br>Reminders at 10am, 1pm, 5pm & 9pm.</p>
             </div>
         </div>
         <div class="footer">Built for AUC students</div>
     </div>
     <script>
-        let userName = '', userPhone = '';
-
         function goToStep2() {
-            userName = document.getElementById('name').value.trim();
-            userPhone = document.getElementById('phone').value.replace(/[\s+\-]/g, '').trim();
-            if (!userName) return alert('Please enter your name');
-            if (!userPhone || userPhone.length < 10) return alert('Please enter a valid phone number');
+            const name = document.getElementById('name').value.trim();
+            const phone = document.getElementById('phone').value.replace(/[\s+\-]/g, '').trim();
+            if (!name) return alert('Please enter your name');
+            if (!phone || phone.length < 10) return alert('Please enter a valid phone number');
             document.getElementById('step1').classList.remove('active');
             document.getElementById('step2').classList.add('active');
-        }
-
-        async function captureSession() {
-            const btn = document.getElementById('captureBtn');
-            const errDiv = document.getElementById('captureError');
-            btn.textContent = 'Connecting...';
-            btn.disabled = true;
-            errDiv.style.display = 'none';
-
-            try {
-                // Open Canvas in a hidden iframe to check if user is logged in
-                // Then use our server to capture cookies via Playwright
-                const email = document.getElementById('email').value.trim();
-                const password = document.getElementById('password').value;
-                if (!email || !password) {
-                    errDiv.textContent = 'Please enter your email and password.';
-                    errDiv.style.display = 'block';
-                    btn.textContent = 'Connect Canvas';
-                    btn.disabled = false;
-                    return;
-                }
-                btn.textContent = 'Waiting for 2FA approval...';
-                const r = await fetch('/api/capture-session', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ phone: userPhone, name: userName, email, password }),
-                });
-                const data = await r.json();
-                if (data.success) {
-                    document.getElementById('step2').classList.remove('active');
-                    document.getElementById('step3').classList.add('active');
-                } else {
-                    errDiv.textContent = data.error || 'Failed to connect. Make sure you are logged into Canvas first.';
-                    errDiv.style.display = 'block';
-                    btn.textContent = "I'm logged in — Connect Now";
-                    btn.disabled = false;
-                }
-            } catch(e) {
-                errDiv.textContent = 'Connection error. Try again.';
-                errDiv.style.display = 'block';
-                btn.textContent = "I'm logged in — Connect Now";
-                btn.disabled = false;
-            }
         }
     </script>
 </body>
@@ -840,9 +778,55 @@ async def capture_session(request: Request):
         return {"success": False, "error": "Login failed. Check your credentials and approve 2FA."}
 
 
-def _do_login_sync(token: str, phone: str, name: str = "", email: str = "", password: str = ""):
-    """Legacy function — kept for compatibility. New flow uses /api/capture-session."""
-    pass
+@router.get("/extension")
+async def download_extension():
+    """Serve the extension as a zip download."""
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+    from pathlib import Path
+
+    ext_dir = Path(__file__).parent.parent / "extension"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in ext_dir.iterdir():
+            if f.is_file():
+                zf.write(f, f"canvas-reminder-extension/{f.name}")
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=canvas-reminder-extension.zip"},
+    )
+
+
+@router.post("/api/register-cookies")
+async def register_cookies(request: Request):
+    """Receive Canvas cookies from browser extension."""
+    body = await request.json()
+    phone = body.get("phone", "").replace(" ", "").replace("+", "").strip()
+    name = body.get("name", "").strip()
+    cookies = body.get("cookies", [])
+
+    if not phone or not cookies:
+        return {"success": False, "error": "Missing phone or cookies"}
+
+    add_user(phone, cookies, name=name)
+    logger.info("User %s (%s) registered via extension", phone, name)
+
+    try:
+        from src import whatsapp_service
+        greeting = f"Hey {name}! " if name else ""
+        whatsapp_service.send_text(
+            f"✅ *{greeting}Canvas Reminder is set up!*\n\n"
+            "You'll receive assignment reminders at 10am, 1pm, 5pm & 9pm.\n\n"
+            "Send *hi* to see the menu.",
+            to=phone,
+        )
+    except Exception as e:
+        logger.warning("Failed to send welcome message: %s", e)
+
+    return {"success": True}
 
 
 # ─── Admin Routes ───────────────────────────────────────────

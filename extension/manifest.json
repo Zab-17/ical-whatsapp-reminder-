@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Canvas Reminder",
+  "description": "Connect your Canvas account to get WhatsApp assignment reminders",
+  "version": "1.0.0",
+  "permissions": ["cookies"],
+  "host_permissions": ["https://aucegypt.instructure.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}

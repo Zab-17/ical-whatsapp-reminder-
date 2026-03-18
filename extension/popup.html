@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { width: 320px; font-family: -apple-system, sans-serif; background: #0f172a; color: #e8edf5; padding: 24px; }
+    h1 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .sub { color: #64748b; font-size: 12px; margin-bottom: 20px; }
+    label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    input { width: 100%; padding: 10px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 14px; margin-bottom: 12px; outline: none; }
+    input:focus { border-color: #c41230; }
+    .btn { width: 100%; padding: 11px; background: #c41230; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+    .btn:hover { background: #a00e28; }
+    .btn:disabled { background: #334155; cursor: not-allowed; }
+    .status { margin-top: 12px; font-size: 12px; text-align: center; }
+    .success { color: #22c55e; }
+    .info { color: #64748b; }
+    .step2 { display: none; }
+    .step2.active { display: block; }
+  </style>
+</head>
+<body>
+  <div id="setup">
+    <h1>Canvas Reminder</h1>
+    <p class="sub">Connect Canvas to get WhatsApp reminders</p>
+
+    <label>Your Name</label>
+    <input type="text" id="name" placeholder="Zeyad">
+
+    <label>WhatsApp Number</label>
+    <input type="tel" id="phone" placeholder="201XXXXXXXXX">
+
+    <button class="btn" id="saveBtn" onclick="save()">Save & Connect</button>
+
+    <div id="step2" class="step2">
+      <p class="status info" style="margin-top:16px">
+        Now open <a href="https://aucegypt.instructure.com" target="_blank" style="color:#3b82f6">Canvas</a> and log in. Your account will be connected automatically.
+      </p>
+    </div>
+
+    <div id="statusMsg" class="status"></div>
+  </div>
+
+  <div id="connected" style="display:none;text-align:center">
+    <div style="font-size:36px;margin-bottom:12px">✅</div>
+    <h1>Connected!</h1>
+    <p class="sub" style="margin-bottom:0">Send <strong style="color:#fff">hi</strong> on WhatsApp to start</p>
+  </div>
+
+  <script>
+    // Check if already connected
+    chrome.storage.local.get(["connected", "phone", "name"], (data) => {
+      if (data.connected) {
+        document.getElementById("setup").style.display = "none";
+        document.getElementById("connected").style.display = "block";
+      } else if (data.phone) {
+        document.getElementById("phone").value = data.phone;
+        document.getElementById("name").value = data.name || "";
+        document.getElementById("step2").classList.add("active");
+        document.getElementById("saveBtn").textContent = "Saved — waiting for Canvas login";
+        document.getElementById("saveBtn").disabled = true;
+      }
+    });
+
+    function save() {
+      const name = document.getElementById("name").value.trim();
+      const phone = document.getElementById("phone").value.replace(/[\s+\-]/g, "").trim();
+
+      if (!name) return alert("Enter your name");
+      if (!phone || phone.length < 10) return alert("Enter a valid phone number");
+
+      chrome.storage.local.set({ phone, name }, () => {
+        document.getElementById("step2").classList.add("active");
+        document.getElementById("saveBtn").textContent = "Saved — waiting for Canvas login";
+        document.getElementById("saveBtn").disabled = true;
+      });
+    }
+
+    // Listen for connection success
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.phone && !changes.phone.newValue) {
+        // Phone was cleared = registration succeeded
+        chrome.storage.local.set({ connected: true });
+        document.getElementById("setup").style.display = "none";
+        document.getElementById("connected").style.display = "block";
+      }
+    });
+  </script>
+</body>
+</html>
