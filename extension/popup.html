@@ -9,82 +9,41 @@
     label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
     input { width: 100%; padding: 10px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 14px; margin-bottom: 12px; outline: none; }
     input:focus { border-color: #c41230; }
-    .btn { width: 100%; padding: 11px; background: #c41230; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+    .btn { width: 100%; padding: 11px; background: #c41230; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; display: block; text-align: center; text-decoration: none; margin-bottom: 8px; }
     .btn:hover { background: #a00e28; }
-    .btn:disabled { background: #334155; cursor: not-allowed; }
-    .status { margin-top: 12px; font-size: 12px; text-align: center; }
-    .success { color: #22c55e; }
-    .info { color: #64748b; }
-    .step2 { display: none; }
-    .step2.active { display: block; }
+    .btn.green { background: #059669; }
+    .btn.green:hover { background: #047857; }
+    .msg { margin-top: 12px; font-size: 12px; padding: 10px; border-radius: 8px; }
+    .msg.info { background: #1e293b; color: #94a3b8; }
+    .view { display: none; }
+    .view.active { display: block; }
   </style>
 </head>
 <body>
-  <div id="setup">
+  <div id="v-setup" class="view active">
     <h1>Canvas Reminder</h1>
-    <p class="sub">Connect Canvas to get WhatsApp reminders</p>
-
+    <p class="sub">Get WhatsApp assignment reminders</p>
     <label>Your Name</label>
     <input type="text" id="name" placeholder="Zeyad">
-
     <label>WhatsApp Number</label>
     <input type="tel" id="phone" placeholder="201XXXXXXXXX">
-
-    <button class="btn" id="saveBtn" onclick="save()">Save & Connect</button>
-
-    <div id="step2" class="step2">
-      <p class="status info" style="margin-top:16px">
-        Now open <a href="https://aucegypt.instructure.com" target="_blank" style="color:#3b82f6">Canvas</a> and log in. Your account will be connected automatically.
-      </p>
-    </div>
-
-    <div id="statusMsg" class="status"></div>
+    <button class="btn" id="saveBtn">Save & Continue</button>
   </div>
 
-  <div id="connected" style="display:none;text-align:center">
+  <div id="v-canvas" class="view">
+    <h1>Now log into Canvas</h1>
+    <p class="sub">Click below, log in normally, then come back and click "I'm logged in"</p>
+    <a href="https://aucegypt.instructure.com" target="_blank" class="btn">Open Canvas</a>
+    <button class="btn green" id="doneBtn">I'm logged in</button>
+    <div id="statusMsg" class="msg info" style="display:none"></div>
+  </div>
+
+  <div id="v-done" class="view" style="text-align:center">
     <div style="font-size:36px;margin-bottom:12px">✅</div>
     <h1>Connected!</h1>
     <p class="sub" style="margin-bottom:0">Send <strong style="color:#fff">hi</strong> on WhatsApp to start</p>
   </div>
 
-  <script>
-    // Check if already connected
-    chrome.storage.local.get(["connected", "phone", "name"], (data) => {
-      if (data.connected) {
-        document.getElementById("setup").style.display = "none";
-        document.getElementById("connected").style.display = "block";
-      } else if (data.phone) {
-        document.getElementById("phone").value = data.phone;
-        document.getElementById("name").value = data.name || "";
-        document.getElementById("step2").classList.add("active");
-        document.getElementById("saveBtn").textContent = "Saved — waiting for Canvas login";
-        document.getElementById("saveBtn").disabled = true;
-      }
-    });
-
-    function save() {
-      const name = document.getElementById("name").value.trim();
-      const phone = document.getElementById("phone").value.replace(/[\s+\-]/g, "").trim();
-
-      if (!name) return alert("Enter your name");
-      if (!phone || phone.length < 10) return alert("Enter a valid phone number");
-
-      chrome.storage.local.set({ phone, name }, () => {
-        document.getElementById("step2").classList.add("active");
-        document.getElementById("saveBtn").textContent = "Saved — waiting for Canvas login";
-        document.getElementById("saveBtn").disabled = true;
-      });
-    }
-
-    // Listen for connection success
-    chrome.storage.onChanged.addListener((changes) => {
-      if (changes.phone && !changes.phone.newValue) {
-        // Phone was cleared = registration succeeded
-        chrome.storage.local.set({ connected: true });
-        document.getElementById("setup").style.display = "none";
-        document.getElementById("connected").style.display = "block";
-      }
-    });
-  </script>
+  <script src="popup.js"></script>
 </body>
 </html>

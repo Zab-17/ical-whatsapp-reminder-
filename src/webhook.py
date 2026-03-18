@@ -67,6 +67,18 @@ async def health():
     return {"status": "ok", "scheduled_jobs": jobs}
 
 
+@app.get("/qr")
+async def qr_proxy():
+    """Proxy the WhatsApp bridge QR page."""
+    import httpx
+    from fastapi.responses import HTMLResponse
+    try:
+        r = httpx.get(f"{settings.baileys_bridge_url}/qr", timeout=10)
+        return HTMLResponse(r.text)
+    except Exception:
+        return HTMLResponse("<h1>WhatsApp bridge not responding. Try again in a moment.</h1>")
+
+
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request):
     body = await request.json()
