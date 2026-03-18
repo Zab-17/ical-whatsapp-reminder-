@@ -461,25 +461,50 @@ LANDING_HTML = """
             <!-- Step 2: Install Extension -->
             <div id="step2" class="step">
                 <h2 style="font-size:18px;font-weight:600;margin-bottom:16px">Connect your Canvas</h2>
-                <div class="hint-box">
-                    <span>1️⃣</span>
-                    <p>Install the Canvas Reminder Chrome extension</p>
-                </div>
-                <a href="/extension" class="btn" style="margin-bottom:16px;text-decoration:none">
-                    Download Extension
+
+                <a href="/extension" class="btn" style="margin-bottom:20px;text-decoration:none">
+                    Download Extension (.zip)
                     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                 </a>
-                <div class="hint-box">
-                    <span>2️⃣</span>
-                    <p>Open the extension, enter your name and WhatsApp number</p>
+
+                <div style="font-size:13px;color:var(--text-muted);line-height:2">
+                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">1</span>
+                        <span><strong style="color:var(--text)">Unzip</strong> the downloaded file</span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">2</span>
+                        <span>Open Chrome, go to <strong style="color:var(--text)">chrome://extensions</strong></span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">3</span>
+                        <span>Turn on <strong style="color:var(--text)">Developer mode</strong> (top right toggle)</span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">4</span>
+                        <span>Click <strong style="color:var(--text)">Load unpacked</strong> (top left) and select the unzipped folder</span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">5</span>
+                        <span>Click the <strong style="color:var(--text)">puzzle icon</strong> in Chrome toolbar, then click <strong style="color:var(--text)">Canvas Reminder</strong></span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">6</span>
+                        <span>Enter your <strong style="color:var(--text)">name & WhatsApp number</strong>, click Save</span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">7</span>
+                        <span>Click <strong style="color:var(--text)">Open Canvas</strong>, log in normally with your AUC account</span>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:flex-start">
+                        <span style="background:#059669;color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">8</span>
+                        <span>Come back to extension, click <strong style="color:var(--text)">I'm logged in</strong> — done!</span>
+                    </div>
                 </div>
-                <div class="hint-box">
-                    <span>3️⃣</span>
-                    <p>Go to <a href="https://aucegypt.instructure.com" target="_blank" style="color:#3b82f6">Canvas</a> and log in normally. The extension connects your account automatically.</p>
-                </div>
-                <div class="hint-box">
+
+                <div class="hint-box" style="margin-top:20px">
                     <span>🔒</span>
-                    <p>We never see your password. The extension only reads your Canvas session after you log in.</p>
+                    <p>We never see your password. The extension only reads your Canvas session cookie after you log in yourself.</p>
                 </div>
             </div>
         </div>
