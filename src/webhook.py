@@ -7,56 +7,46 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from src import conversation, whatsapp_service
+from src.config import settings
+from src.database import get_user
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(name)s %(levelname)s %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 scheduler = BackgroundScheduler()
-
-# Tracks pending numbered selections per user phone number
 _pending_selections: dict[str, list[dict[str, str]]] = {}
+
+LOGIN_URL = None  # Set after app starts
 
 
 def _run_reminder():
     try:
-        from src.reminder import send_daily_reminder
-        send_daily_reminder()
+        from src.reminder import send_all_reminders
+        send_all_reminders()
     except Exception as e:
         logger.error("Scheduled reminder failed: %s", e)
 
 
 def _run_detector():
     try:
-        from src.detector import detect_changes
-        detect_changes()
+        from src.detector import detect_all_changes
+        detect_all_changes()
     except Exception as e:
         logger.error("Scheduled detector failed: %s", e)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Schedule reminders at 10 AM, 1 PM, 5 PM, 9 PM Cairo time (UTC+2)
     for hour_utc in [8, 11, 15, 19]:
-        scheduler.add_job(
-            _run_reminder,
-            CronTrigger(hour=hour_utc, minute=0),
-            id=f"reminder_{hour_utc}",
-            replace_existing=True,
-        )
-        logger.info("Scheduled reminder at %d:00 UTC", hour_utc)
+        scheduler.add_job(_run_reminder, CronTrigger(hour=hour_utc, minute=0),
+                          id=f"reminder_{hour_utc}", replace_existing=True)
 
-    scheduler.add_job(
-        _run_detector,
-        IntervalTrigger(hours=3),
-        id="detector",
-        replace_existing=True,
-    )
-    logger.info("Scheduled change detector every 3 hours")
+    scheduler.add_job(_run_detector, IntervalTrigger(hours=3),
+                      id="detector", replace_existing=True)
 
     scheduler.start()
     logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))
@@ -65,6 +55,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Canvas Reminder WhatsApp Bot", lifespan=lifespan)
+
+# Import and include login routes
+from src.web import router as web_router
+app.include_router(web_router)
 
 
 @app.get("/health")
@@ -75,51 +69,45 @@ async def health():
 
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request):
-    """Handle incoming WhatsApp messages from Green API."""
     body = await request.json()
+    from_number = body.get("from", "")
+    text = body.get("text", "").strip()
 
-    try:
-        msg_type = body.get("typeWebhook", "")
+    if not from_number or not text:
+        return {"status": "ignored"}
 
-        if msg_type != "incomingMessageReceived":
-            return {"status": "ignored"}
+    logger.info("Received from %s: %s", from_number, text)
 
-        msg_data = body.get("messageData", {})
-        sender = body.get("senderData", {})
-        from_number = sender.get("sender", "").replace("@c.us", "")
+    # Check if user is registered
+    user = get_user(from_number)
+    if not user:
+        whatsapp_service.send_text(
+            "👋 Welcome! You're not registered yet.\n\n"
+            "Visit the login page to connect your Canvas account:\n"
+            f"{settings.canvas_api_url.replace('aucegypt.instructure.com', 'YOUR_RENDER_URL')}/login",
+            to=from_number,
+        )
+        return {"status": "unregistered"}
 
-        # Extract text from message
-        text_data = msg_data.get("textMessageData") or msg_data.get("extendedTextMessageData")
-        if not text_data:
-            return {"status": "no text"}
+    # Resolve numbered reply
+    resolved = _resolve_numbered_reply(from_number, text)
 
-        user_input = text_data.get("textMessage") or text_data.get("text", "")
-        user_input = user_input.strip()
+    # Route through conversation
+    result = conversation.route(resolved, from_number)
 
-        logger.info("Received from %s: %s", from_number, user_input)
+    response_body = result["body"]
+    buttons = result.get("buttons")
+    items = result.get("items")
 
-        # Resolve numbered reply if pending
-        resolved_input = _resolve_numbered_reply(from_number, user_input)
-
-        # Route through conversation handler
-        result = conversation.route(resolved_input)
-
-        response_body = result["body"]
-        buttons = result.get("buttons")
-        items = result.get("items")
-
-        if items:
-            _pending_selections[from_number] = items
-            whatsapp_service.send_list_message(response_body, items, to=from_number)
-        elif buttons:
-            _pending_selections[from_number] = buttons
-            whatsapp_service.send_button_message(response_body, buttons, to=from_number)
-        else:
-            _pending_selections.pop(from_number, None)
-            whatsapp_service.send_text(response_body, to=from_number)
-
-    except Exception as e:
-        logger.error("Error processing webhook: %s", e)
+    if items:
+        _pending_selections[from_number] = items
+        whatsapp_service.send_list_message(response_body, items, to=from_number)
+    elif buttons:
+        _pending_selections[from_number] = buttons
+        whatsapp_service.send_button_message(response_body, buttons, to=from_number)
+    else:
+        _pending_selections.pop(from_number, None)
+        whatsapp_service.send_text(response_body, to=from_number)
 
     return {"status": "ok"}
 
@@ -132,7 +120,6 @@ def _resolve_numbered_reply(phone: str, body: str) -> str:
         index = int(body) - 1
         if 0 <= index < len(pending):
             resolved = pending[index]["id"]
-            logger.info("Resolved numbered reply %s -> %s", body, resolved)
             _pending_selections.pop(phone, None)
             return resolved
     except (ValueError, KeyError, IndexError):

@@ -6,20 +6,15 @@ class Settings(BaseSettings):
 
     # Canvas LMS
     canvas_api_url: str = "https://aucegypt.instructure.com"
-    canvas_api_token: str = ""
-    canvas_email: str = ""
-    canvas_password: str = ""
-    canvas_cookies_b64: str = ""
 
-    # WhatsApp (Green API)
-    green_api_instance_id: str
-    green_api_token: str
-    user_whatsapp_to: str  # Phone number without + (e.g., 201154069714)
+    # WhatsApp Bridge (Baileys)
+    baileys_bridge_url: str = "http://localhost:3001"
+
+    # Database
+    database_path: str = "canvas_reminder.db"
 
     # Settings
-    reminder_hour_utc: int = 5
     upcoming_days: int = 7
-    snapshot_path: str = "snapshot.json"
 
 
 settings = Settings()

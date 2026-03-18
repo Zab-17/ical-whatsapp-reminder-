@@ -1,0 +1,99 @@
+from __future__ import annotations
+
+import json
+import logging
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+
+from src.config import settings
+
+logger = logging.getLogger(__name__)
+
+_db_path = Path(settings.database_path)
+
+
+def _conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(_db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+def init_db() -> None:
+    with _conn() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                phone TEXT PRIMARY KEY,
+                cookies TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_login TEXT NOT NULL,
+                snapshot TEXT DEFAULT '{}'
+            )
+        """)
+    logger.info("Database initialized at %s", _db_path)
+
+
+def add_user(phone: str, cookies: list[dict]) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO users (phone, cookies, created_at, last_login) VALUES (?, ?, ?, ?)",
+            (phone, json.dumps(cookies), now, now),
+        )
+    logger.info("User %s registered", phone)
+
+
+def get_user(phone: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute("SELECT * FROM users WHERE phone = ?", (phone,)).fetchone()
+    if row:
+        return dict(row)
+    return None
+
+
+def get_all_users() -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute("SELECT * FROM users").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_user_cookies(phone: str) -> list[dict] | None:
+    user = get_user(phone)
+    if not user:
+        return None
+    return json.loads(user["cookies"])
+
+
+def update_cookies(phone: str, cookies: list[dict]) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE users SET cookies = ?, last_login = ? WHERE phone = ?",
+            (json.dumps(cookies), now, phone),
+        )
+
+
+def get_user_snapshot(phone: str) -> dict:
+    user = get_user(phone)
+    if not user:
+        return {}
+    return json.loads(user.get("snapshot") or "{}")
+
+
+def save_user_snapshot(phone: str, snapshot_data: dict) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE users SET snapshot = ? WHERE phone = ?",
+            (json.dumps(snapshot_data), phone),
+        )
+
+
+def delete_user(phone: str) -> None:
+    with _conn() as conn:
+        conn.execute("DELETE FROM users WHERE phone = ?", (phone,))
+    logger.info("User %s deleted", phone)
+
+
+# Initialize on import
+init_db()

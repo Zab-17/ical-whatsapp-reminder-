@@ -1,6 +1,7 @@
 .env
-snapshot.json
+*.db
 canvas_cookies.json
+snapshot.json
 __pycache__/
 *.pyc
 .venv/
@@ -10,3 +11,5 @@ dist/
 build/
 .mypy_cache/
 .pytest_cache/
+whatsapp-bridge/node_modules/
+whatsapp-bridge/auth_session/
