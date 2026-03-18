@@ -18,6 +18,10 @@ primary_region = 'fra'
   PYTHON_WEBHOOK_URL = 'http://localhost:8000/webhook/whatsapp'
   WA_SESSION_PATH = '/data/wa_session'
 
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'
+
 [mounts]
   source = 'canvas_data'
   destination = '/data'

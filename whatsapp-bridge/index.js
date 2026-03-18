@@ -15,7 +15,15 @@ const client = new Client({
     authStrategy: new LocalAuth({ dataPath: process.env.WA_SESSION_PATH || './auth_session' }),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+            '--single-process',
+        ],
     },
 });
 
