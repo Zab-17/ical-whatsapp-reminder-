@@ -12,7 +12,7 @@ let qrCode = null;
 let isConnected = false;
 
 const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: './auth_session' }),
+    authStrategy: new LocalAuth({ dataPath: process.env.WA_SESSION_PATH || './auth_session' }),
     puppeteer: {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],

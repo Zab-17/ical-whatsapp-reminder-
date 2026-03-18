@@ -6,14 +6,14 @@ import logging
 import sys
 
 from src import canvas_service, whatsapp_service
-from src.database import get_all_users, get_user_snapshot, save_user_snapshot
+from src.database import get_active_users, get_user_snapshot, save_user_snapshot
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def detect_all_changes() -> None:
-    users = get_all_users()
+    users = get_active_users()
     logger.info("Running change detection for %d users", len(users))
     for user in users:
         try:

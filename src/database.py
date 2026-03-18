@@ -25,21 +25,24 @@ def init_db() -> None:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 phone TEXT PRIMARY KEY,
+                name TEXT NOT NULL DEFAULT '',
                 cookies TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 last_login TEXT NOT NULL,
-                snapshot TEXT DEFAULT '{}'
+                snapshot TEXT DEFAULT '{}',
+                reminder_hours TEXT DEFAULT '8,11,15,19',
+                active INTEGER DEFAULT 1
             )
         """)
     logger.info("Database initialized at %s", _db_path)
 
 
-def add_user(phone: str, cookies: list[dict]) -> None:
+def add_user(phone: str, cookies: list[dict], name: str = "") -> None:
     now = datetime.now(timezone.utc).isoformat()
     with _conn() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO users (phone, cookies, created_at, last_login) VALUES (?, ?, ?, ?)",
-            (phone, json.dumps(cookies), now, now),
+            "INSERT OR REPLACE INTO users (phone, name, cookies, created_at, last_login) VALUES (?, ?, ?, ?, ?)",
+            (phone, name, json.dumps(cookies), now, now),
         )
     logger.info("User %s registered", phone)
 
@@ -93,6 +96,37 @@ def delete_user(phone: str) -> None:
     with _conn() as conn:
         conn.execute("DELETE FROM users WHERE phone = ?", (phone,))
     logger.info("User %s deleted", phone)
+
+
+def deactivate_user(phone: str) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE users SET active = 0 WHERE phone = ?", (phone,))
+    logger.info("User %s unsubscribed", phone)
+
+
+def reactivate_user(phone: str) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE users SET active = 1 WHERE phone = ?", (phone,))
+    logger.info("User %s resubscribed", phone)
+
+
+def get_active_users() -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute("SELECT * FROM users WHERE active = 1").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_user_reminder_hours(phone: str) -> list[int]:
+    user = get_user(phone)
+    if not user:
+        return [8, 11, 15, 19]
+    return [int(h) for h in (user.get("reminder_hours") or "8,11,15,19").split(",")]
+
+
+def set_user_reminder_hours(phone: str, hours: list[int]) -> None:
+    hours_str = ",".join(str(h) for h in sorted(hours))
+    with _conn() as conn:
+        conn.execute("UPDATE users SET reminder_hours = ? WHERE phone = ?", (hours_str, phone))
 
 
 # Initialize on import

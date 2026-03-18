@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 MAIN_MENU_BUTTONS = [
     {"id": "upcoming", "title": "Upcoming Due Dates"},
     {"id": "list_courses", "title": "My Courses"},
-    {"id": "menu", "title": "Main Menu"},
+    {"id": "settings", "title": "Settings"},
 ]
 
 
@@ -23,6 +23,10 @@ def route(user_input: str, phone: str) -> dict:
         return handle_upcoming(phone)
     if user_input == "list_courses":
         return handle_list_courses(phone)
+    if user_input == "settings":
+        return handle_settings(phone)
+    if user_input.startswith("settime_"):
+        return handle_set_time(phone, user_input)
     if user_input.startswith("course_"):
         cid = _extract_id(user_input, "course_")
         if cid:
@@ -201,6 +205,44 @@ def handle_announcements(phone: str, course_id: int) -> dict:
 
     buttons = [{"id": f"course_{course_id}", "title": "Back to Course"}, {"id": "menu", "title": "Main Menu"}]
     return {"body": body, "buttons": buttons}
+
+
+TIME_PRESETS = {
+    "settime_morning": ("Morning only", [8]),
+    "settime_default": ("Default (10am,1pm,5pm,9pm)", [8, 11, 15, 19]),
+    "settime_busy": ("Busy schedule (1pm, 9pm)", [11, 19]),
+    "settime_night": ("Night owl (5pm, 9pm, 12am)", [15, 19, 22]),
+    "settime_all": ("Every 3 hours", [6, 9, 12, 15, 18, 21]),
+}
+
+UTC_TO_CAIRO = {6: "8am", 7: "9am", 8: "10am", 9: "11am", 10: "12pm", 11: "1pm",
+                12: "2pm", 13: "3pm", 14: "4pm", 15: "5pm", 16: "6pm", 17: "7pm",
+                18: "8pm", 19: "9pm", 20: "10pm", 21: "11pm", 22: "12am"}
+
+
+def handle_settings(phone: str) -> dict:
+    from src.database import get_user_reminder_hours
+    current = get_user_reminder_hours(phone)
+    current_str = ", ".join(UTC_TO_CAIRO.get(h, f"{h}:00") for h in current)
+
+    body = f"⚙️ *Settings*\n\nCurrent reminder times: *{current_str}*\n\nChoose a schedule:"
+    items = [{"id": k, "title": v[0]} for k, v in TIME_PRESETS.items()]
+    return {"body": body, "items": items}
+
+
+def handle_set_time(phone: str, user_input: str) -> dict:
+    from src.database import set_user_reminder_hours
+    preset = TIME_PRESETS.get(user_input)
+    if not preset:
+        return {"body": "Invalid option.", "buttons": MAIN_MENU_BUTTONS}
+
+    name, hours = preset
+    set_user_reminder_hours(phone, hours)
+    times_str = ", ".join(UTC_TO_CAIRO.get(h, f"{h}:00") for h in hours)
+    return {
+        "body": f"✅ Reminder times updated to: *{times_str}*",
+        "buttons": MAIN_MENU_BUTTONS,
+    }
 
 
 def _extract_id(text: str, prefix: str) -> int | None:

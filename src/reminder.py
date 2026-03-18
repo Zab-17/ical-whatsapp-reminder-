@@ -4,25 +4,32 @@ from __future__ import annotations
 import logging
 import sys
 
+from datetime import datetime, timezone
+
 from src import canvas_service, whatsapp_service
 from src.conversation import MAIN_MENU_BUTTONS
-from src.database import get_all_users
+from src.database import get_active_users, get_user_reminder_hours
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def send_all_reminders() -> None:
-    users = get_all_users()
-    logger.info("Sending reminders to %d users", len(users))
+    current_hour = datetime.now(timezone.utc).hour
+    users = get_active_users()
+    logger.info("Reminder check at %d:00 UTC for %d active users", current_hour, len(users))
     for user in users:
         try:
-            send_reminder_for_user(user["phone"])
+            user_hours = get_user_reminder_hours(user["phone"])
+            if current_hour in user_hours:
+                send_reminder_for_user(user["phone"], user.get("name", ""))
+            else:
+                logger.info("Skipping %s — not in their schedule (%s)", user["phone"], user_hours)
         except Exception as e:
             logger.error("Reminder failed for %s: %s", user["phone"], e)
 
 
-def send_reminder_for_user(phone: str) -> None:
+def send_reminder_for_user(phone: str, name: str = "") -> None:
     try:
         items = canvas_service.get_upcoming_items(phone)
     except Exception as e:
@@ -30,10 +37,11 @@ def send_reminder_for_user(phone: str) -> None:
         whatsapp_service.send_text("❌ Your Canvas session may have expired. Please re-login.", to=phone)
         return
 
+    greeting = f"Hey {name}! " if name else ""
     if not items:
-        body = "☀️ *Good morning!*\n\n✅ No upcoming assignments in the next 7 days."
+        body = f"☀️ *{greeting}No upcoming assignments in the next 7 days!*"
     else:
-        lines = ["☀️ *Assignment Reminder:*\n"]
+        lines = [f"☀️ *{greeting}Assignment Reminder:*\n"]
         current_date = None
         for a in items:
             date_str = a.due_at.strftime("%A, %b %d") if a.due_at else "No date"

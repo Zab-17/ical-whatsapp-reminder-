@@ -18,17 +18,20 @@ def _send(to: str, message: str) -> dict:
     return result
 
 
+UNSUB_FOOTER = "\n\n_Reply *stop* to unsubscribe_"
+
+
 def send_text(body: str, to: str = "") -> dict:
-    return _send(to, body)
+    return _send(to, body + UNSUB_FOOTER)
 
 
 def send_button_message(body: str, buttons: list[dict[str, str]], to: str = "") -> dict:
     button_text = "\n".join(f"{i + 1}. {btn['title']}" for i, btn in enumerate(buttons))
-    full_body = f"{body}\n\n{button_text}\n\nReply with the number of your choice."
+    full_body = f"{body}\n\n{button_text}\n\nReply with the number of your choice.{UNSUB_FOOTER}"
     return _send(to, full_body)
 
 
 def send_list_message(body: str, items: list[dict[str, str]], to: str = "") -> dict:
     item_text = "\n".join(f"{i + 1}. {item['title']}" for i, item in enumerate(items))
-    full_body = f"{body}\n\n{item_text}\n\nReply with the number of your choice."
+    full_body = f"{body}\n\n{item_text}\n\nReply with the number of your choice.{UNSUB_FOOTER}"
     return _send(to, full_body)

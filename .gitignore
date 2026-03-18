@@ -1,5 +1,8 @@
 .env
 *.db
+*.db-shm
+*.db-wal
+whatsapp-bridge/.wwebjs_cache/
 canvas_cookies.json
 snapshot.json
 __pycache__/

@@ -41,9 +41,9 @@ def _run_detector():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    for hour_utc in [8, 11, 15, 19]:
-        scheduler.add_job(_run_reminder, CronTrigger(hour=hour_utc, minute=0),
-                          id=f"reminder_{hour_utc}", replace_existing=True)
+    # Run every hour — send_all_reminders checks each user's custom schedule
+    scheduler.add_job(_run_reminder, CronTrigger(minute=0),
+                      id="reminder_hourly", replace_existing=True)
 
     scheduler.add_job(_run_detector, IntervalTrigger(hours=3),
                       id="detector", replace_existing=True)
@@ -78,13 +78,34 @@ async def whatsapp_webhook(request: Request):
 
     logger.info("Received from %s: %s", from_number, text)
 
+    # Handle unsubscribe
+    if text.lower() in ("stop", "unsubscribe", "quit"):
+        from src.database import deactivate_user
+        deactivate_user(from_number)
+        whatsapp_service.send_text(
+            "You've been unsubscribed. No more reminders.\n\nSend *start* anytime to resubscribe.",
+            to=from_number,
+        )
+        return {"status": "unsubscribed"}
+
+    # Handle resubscribe
+    if text.lower() in ("start", "subscribe", "resume"):
+        from src.database import reactivate_user
+        user = get_user(from_number)
+        if user:
+            reactivate_user(from_number)
+            whatsapp_service.send_text(
+                "Welcome back! Reminders are active again.\n\nSend *hi* to see the menu.",
+                to=from_number,
+            )
+            return {"status": "resubscribed"}
+
     # Check if user is registered
     user = get_user(from_number)
     if not user:
         whatsapp_service.send_text(
             "👋 Welcome! You're not registered yet.\n\n"
-            "Visit the login page to connect your Canvas account:\n"
-            f"{settings.canvas_api_url.replace('aucegypt.instructure.com', 'YOUR_RENDER_URL')}/login",
+            "Visit the login page to connect your Canvas account.",
             to=from_number,
         )
         return {"status": "unregistered"}
