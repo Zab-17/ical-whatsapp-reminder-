@@ -50,7 +50,7 @@ client.on('auth_failure', (msg) => {
 client.on('message', async (msg) => {
     if (msg.fromMe) return;
 
-    const from = msg.from.replace('@c.us', '');
+    const from = msg.from.replace('@c.us', '').replace('@lid', '');
     const text = msg.body;
 
     if (!text) return;
@@ -94,7 +94,9 @@ app.post('/send', async (req, res) => {
     const { to, message } = req.body;
     if (!to || !message) return res.status(400).json({ error: 'Missing to or message' });
 
-    const chatId = to.includes('@') ? to : `${to}@c.us`;
+    // If the ID is numeric and long (>15 digits), it's likely a LID
+    const isLid = /^\d{15,}$/.test(to);
+    const chatId = to.includes('@') ? to : (isLid ? `${to}@lid` : `${to}@c.us`);
 
     try {
         const result = await client.sendMessage(chatId, message);

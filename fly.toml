@@ -20,7 +20,7 @@ primary_region = 'fra'
 
 [[vm]]
   size = 'shared-cpu-1x'
-  memory = '1024mb'
+  memory = '2048mb'  # Max for free shared-cpu-1x
 
 [mounts]
   source = 'canvas_data'
