@@ -1,10 +1,10 @@
 name: Daily Assignment Reminder
 
 on:
-  schedule:
-    # 5:00 AM UTC = 7:00 AM Cairo (EET, UTC+2)
-    - cron: '0 5 * * *'
-  workflow_dispatch: # Manual trigger for testing
+  # Disabled — reminders run on Render instead
+  # schedule:
+  #   - cron: '0 5 * * *'
+  workflow_dispatch: # Manual trigger only
 
 jobs:
   send-reminder:

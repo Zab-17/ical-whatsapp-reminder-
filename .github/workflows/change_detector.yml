@@ -1,10 +1,10 @@
 name: Change Detector
 
 on:
-  schedule:
-    # Every 3 hours
-    - cron: '0 */3 * * *'
-  workflow_dispatch: # Manual trigger for testing
+  # Disabled — reminders run on Render instead
+  # schedule:
+  #   - cron: '0 */3 * * *'
+  workflow_dispatch: # Manual trigger only
 
 jobs:
   detect-changes:
