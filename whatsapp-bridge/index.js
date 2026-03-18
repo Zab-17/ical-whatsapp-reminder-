@@ -1,4 +1,5 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const puppeteer = require('puppeteer-core');
 const express = require('express');
 const QRCode = require('qrcode');
 
@@ -14,13 +15,17 @@ let isConnected = false;
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: process.env.WA_SESSION_PATH || './auth_session' }),
     puppeteer: {
+        browserWSEndpoint: undefined,
         headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
+            '--disable-extensions',
+            '--disable-default-apps',
+            '--no-first-run',
         ],
     },
 });
