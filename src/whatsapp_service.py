@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def _send(to: str, message: str) -> dict:
     url = f"{settings.baileys_bridge_url}/send"
-    resp = httpx.post(url, json={"to": to, "message": message}, timeout=30)
+    resp = httpx.post(url, json={"to": to, "message": message}, timeout=180)
     resp.raise_for_status()
     result = resp.json()
     logger.info("Sent message to %s", to)
