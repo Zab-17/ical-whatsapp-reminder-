@@ -841,32 +841,8 @@ async def capture_session(request: Request):
 
 
 def _do_login_sync(token: str, phone: str, name: str = "", email: str = "", password: str = ""):
-    try:
-        from src.auth import login_and_get_cookies
-        cookies = login_and_get_cookies(email, password)
-
-        if cookies:
-                add_user(phone, cookies, name=name)
-                _completed[token] = True
-                logger.info("User %s (%s) registered via browser login", phone, name)
-
-                try:
-                    from src import whatsapp_service
-                    greeting = f"Hey {name}! " if name else ""
-                    whatsapp_service.send_text(
-                        f"✅ *{greeting}Canvas Reminder is set up!*\n\n"
-                        "You'll receive assignment reminders at 10am, 1pm, 5pm & 9pm.\n\n"
-                        "Send *hi* to see the menu.",
-                        to=phone,
-                    )
-                except Exception as we:
-                    logger.warning("Failed to send welcome message: %s", we)
-            else:
-                _errors[token] = "No cookies captured"
-
-    except Exception as e:
-        logger.error("Background login failed: %s", e)
-        _errors[token] = "Login timed out or failed. Try again."
+    """Legacy function — kept for compatibility. New flow uses /api/capture-session."""
+    pass
 
 
 # ─── Admin Routes ───────────────────────────────────────────
