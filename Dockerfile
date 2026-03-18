@@ -18,7 +18,8 @@ RUN cd whatsapp-bridge && npm ci --production
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN python3 -m venv /app/venv && /app/venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN python3 -m venv /app/venv && /app/venv/bin/pip install --no-cache-dir -r requirements.txt \
+    && /app/venv/bin/playwright install chromium --with-deps
 
 # Copy app code
 COPY . .
