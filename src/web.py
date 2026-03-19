@@ -837,6 +837,8 @@ async def register_cookies(request: Request):
         return {"success": False, "error": "Missing phone or cookies"}
 
     add_user(phone, cookies, name=name)
+    from src.canvas_service import invalidate_client
+    invalidate_client(phone)
     logger.info("User %s (%s) registered via extension", phone, name)
 
     try:
