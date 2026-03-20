@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import logging
 
+from datetime import timezone, timedelta
+
 from src import canvas_service
 from src.models import AssignmentInfo
+
+CAIRO_TZ = timezone(timedelta(hours=2))
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +81,8 @@ def handle_upcoming(phone: str) -> dict:
     for date_str, assignments in grouped.items():
         lines.append(f"*{date_str}*")
         for a in assignments:
-            time_str = a.due_at.strftime("%I:%M %p") if a.due_at else ""
+            cairo = a.due_at.astimezone(CAIRO_TZ) if a.due_at else None
+            time_str = cairo.strftime("%I:%M %p") if cairo else ""
             lines.append(f"  • {a.name} ({a.course_name}) — {time_str}")
         lines.append("")
 
@@ -255,6 +260,7 @@ def _extract_id(text: str, prefix: str) -> int | None:
 def _group_by_date(items: list[AssignmentInfo]) -> dict[str, list[AssignmentInfo]]:
     grouped: dict[str, list[AssignmentInfo]] = {}
     for item in items:
-        key = item.due_at.strftime("%A, %b %d") if item.due_at else "No due date"
+        cairo = item.due_at.astimezone(CAIRO_TZ) if item.due_at else None
+        key = cairo.strftime("%A, %b %d") if cairo else "No due date"
         grouped.setdefault(key, []).append(item)
     return grouped

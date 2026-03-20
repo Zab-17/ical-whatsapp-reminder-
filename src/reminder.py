@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import sys
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from src import canvas_service, whatsapp_service
 from src.conversation import MAIN_MENU_BUTTONS
@@ -44,11 +44,12 @@ def send_reminder_for_user(phone: str, name: str = "") -> None:
         lines = [f"☀️ *{greeting}Assignment Reminder:*\n"]
         current_date = None
         for a in items:
-            date_str = a.due_at.strftime("%A, %b %d") if a.due_at else "No date"
+            cairo = a.due_at.astimezone(timezone(timedelta(hours=2))) if a.due_at else None
+            date_str = cairo.strftime("%A, %b %d") if cairo else "No date"
             if date_str != current_date:
                 current_date = date_str
                 lines.append(f"\n📅 *{date_str}*")
-            time_str = a.due_at.strftime("%I:%M %p") if a.due_at else ""
+            time_str = cairo.strftime("%I:%M %p") if cairo else ""
             lines.append(f"  • {a.name}")
             lines.append(f"    📖 {a.course_name} — {time_str}")
         lines.append(f"\n📊 Total: {len(items)} upcoming items")

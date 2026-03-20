@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+CAIRO_TZ = timezone(timedelta(hours=2))
 
 
 @dataclass
@@ -27,7 +29,8 @@ class AssignmentInfo:
     def due_str(self) -> str:
         if self.due_at is None:
             return "No due date"
-        return self.due_at.strftime("%b %d, %I:%M %p")
+        cairo = self.due_at.astimezone(CAIRO_TZ)
+        return cairo.strftime("%b %d, %I:%M %p")
 
 
 @dataclass
@@ -42,7 +45,8 @@ class QuizInfo:
     def due_str(self) -> str:
         if self.due_at is None:
             return "No due date"
-        return self.due_at.strftime("%b %d, %I:%M %p")
+        cairo = self.due_at.astimezone(CAIRO_TZ)
+        return cairo.strftime("%b %d, %I:%M %p")
 
 
 @dataclass
@@ -64,7 +68,8 @@ class AnnouncementInfo:
     def posted_str(self) -> str:
         if self.posted_at is None:
             return "Unknown date"
-        return self.posted_at.strftime("%b %d, %I:%M %p")
+        cairo = self.posted_at.astimezone(CAIRO_TZ)
+        return cairo.strftime("%b %d, %I:%M %p")
 
 
 @dataclass

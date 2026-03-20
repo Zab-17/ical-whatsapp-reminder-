@@ -74,9 +74,16 @@ async function connectToWhatsApp() {
                 || '';
             if (!text) continue;
 
-            // Extract phone number from JID (remove @s.whatsapp.net)
-            const from = msg.key.remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
-            console.log(`Message from ${from}: ${text}`);
+            // Prefer senderPn (real phone number) over LID
+            const remoteJid = msg.key.remoteJid || '';
+            let from;
+            if (msg.key.senderPn) {
+                // senderPn gives us the real phone number (e.g. 201101588288@s.whatsapp.net)
+                from = msg.key.senderPn.replace('@s.whatsapp.net', '');
+            } else {
+                from = remoteJid.replace('@s.whatsapp.net', '').replace(/:.*@lid$/, '');
+            }
+            console.log(`Message from ${from} (jid: ${remoteJid}): ${text}`);
 
             try {
                 await fetch(PYTHON_WEBHOOK_URL, {
