@@ -25,7 +25,13 @@ document.addEventListener('DOMContentLoaded', function() {
       var phoneVal = document.getElementById('phone').value.replace(/[^0-9]/g, '').trim();
 
       if (!nameVal) { alert('Enter your name'); return; }
-      if (!phoneVal || phoneVal.length < 10) { alert('Enter a valid phone number'); return; }
+      // Auto-fix: if starts with 0, prepend 20 (Egypt)
+      if (phoneVal.startsWith('0')) { phoneVal = '20' + phoneVal.substring(1); }
+      // Validate: must be 20 + 10 digits = 12 digits total, starting with 20
+      if (!/^20\d{10}$/.test(phoneVal)) {
+        alert('Phone must be in format: 201XXXXXXXXX\n(Country code 20 + 10-digit number)\n\nExample: 201154069714');
+        return;
+      }
 
       chrome.storage.local.set({ phone: phoneVal, name: nameVal }, function() {
         show('v-canvas');

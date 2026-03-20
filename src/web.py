@@ -22,503 +22,246 @@ LANDING_HTML = """
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <title>Canvas Reminder — AUC</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,600&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --navy: #041631;
-            --navy-light: #0a2249;
-            --crimson: #c41230;
-            --crimson-glow: #e8153a;
-            --gold: #d4a843;
-            --surface: #0c1e3d;
-            --surface-2: #122952;
-            --text: #e8edf5;
-            --text-muted: #7b8fad;
-            --text-dim: #4a5f80;
-            --radius: 14px;
-        }
+        :root{--navy:#041631;--surface:rgba(6,20,42,0.65);--crimson:#c41230;--gold:#d4a843;--text:#dfe6f0;--mid:#6e83a3;--dim:#34506e}
+        *{margin:0;padding:0;box-sizing:border-box}
+        html,body{height:100%;overflow:hidden}
+        body{font-family:'Cormorant Garamond',serif;background:var(--navy);color:var(--text);display:flex;align-items:center;justify-content:center}
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        /* === LIVING BACKGROUND — slow morphing aurora + drifting motes === */
+        canvas#bg{position:fixed;inset:0;z-index:0}
+        .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:0.25;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")}
 
-        body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--navy);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
+        .wrap{position:relative;z-index:2;width:100%;max-width:420px;padding:16px}
 
-        /* Animated background */
-        .bg {
-            position: fixed; inset: 0; z-index: 0; overflow: hidden;
-        }
-        .bg .orb {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(120px);
-            opacity: 0.35;
-            animation: drift 20s ease-in-out infinite alternate;
-        }
-        .bg .orb:nth-child(1) {
-            width: 600px; height: 600px;
-            background: var(--crimson);
-            top: -200px; right: -150px;
-            animation-duration: 25s;
-        }
-        .bg .orb:nth-child(2) {
-            width: 500px; height: 500px;
-            background: #1a3a7a;
-            bottom: -200px; left: -100px;
-            animation-duration: 30s;
-            animation-delay: -5s;
-        }
-        .bg .orb:nth-child(3) {
-            width: 300px; height: 300px;
-            background: var(--gold);
-            top: 50%; left: 50%;
-            opacity: 0.12;
-            animation-duration: 22s;
-            animation-delay: -10s;
-        }
-        @keyframes drift {
-            0% { transform: translate(0, 0) scale(1); }
-            33% { transform: translate(40px, -30px) scale(1.05); }
-            66% { transform: translate(-20px, 20px) scale(0.95); }
-            100% { transform: translate(30px, -40px) scale(1.02); }
-        }
+        .card{background:var(--surface);border:1px solid rgba(255,255,255,0.04);border-radius:20px;padding:28px 28px 24px;backdrop-filter:blur(60px);-webkit-backdrop-filter:blur(60px);box-shadow:0 1px 0 rgba(255,255,255,0.03) inset,0 40px 80px -20px rgba(0,0,0,0.5);animation:appear 1s cubic-bezier(.16,1,.3,1) both}
+        @keyframes appear{from{opacity:0;transform:translateY(30px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 
-        /* Noise overlay */
-        .bg::after {
-            content: '';
-            position: absolute; inset: 0;
-            background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-            opacity: 0.4;
-            pointer-events: none;
-        }
+        .hdr{text-align:center;margin-bottom:20px}
+        .badge{display:inline-block;padding:3px 14px;border:1px solid rgba(212,168,67,0.2);border-radius:100px;font-family:'DM Mono',monospace;font-size:9px;color:var(--gold);letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;animation:appear 1s cubic-bezier(.16,1,.3,1) .1s both}
+        .hdr h1{font-size:28px;font-weight:300;letter-spacing:-.5px;line-height:1.1;animation:appear 1s cubic-bezier(.16,1,.3,1) .15s both}
+        .hdr h1 em{font-style:italic;font-weight:600;color:var(--crimson)}
+        .hdr .sub{color:var(--mid);font-family:'DM Mono',monospace;font-size:11px;font-weight:300;margin-top:8px;letter-spacing:.5px;animation:appear 1s cubic-bezier(.16,1,.3,1) .2s both}
 
-        /* Grid lines */
-        .grid-lines {
-            position: fixed; inset: 0; z-index: 0;
-            background-image:
-                linear-gradient(rgba(196,18,48,0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(196,18,48,0.03) 1px, transparent 1px);
-            background-size: 60px 60px;
-            mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
-        }
+        .line{height:1px;margin:0 0 18px;background:linear-gradient(90deg,transparent,rgba(196,18,48,0.12),transparent)}
 
-        .container {
-            position: relative; z-index: 1;
-            width: 100%; max-width: 440px;
-            padding: 20px;
-            animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-        }
+        .step{display:none}.step.active{display:block;animation:si .6s cubic-bezier(.16,1,.3,1) both}
+        @keyframes si{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        .f{margin-bottom:12px}
+        .f label{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+        .f input{width:100%;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;transition:all .3s}
+        .f input::placeholder{color:var(--dim);font-family:'Cormorant Garamond',serif;font-size:14px;font-weight:300;font-style:italic}
+        .f input:focus{border-color:rgba(212,168,67,0.3);background:rgba(212,168,67,0.03);box-shadow:0 0 0 3px rgba(212,168,67,0.04)}
+        .f input.invalid{border-color:rgba(196,18,48,0.4);box-shadow:0 0 0 3px rgba(196,18,48,0.05)}
+        .f input.valid{border-color:rgba(34,197,94,0.3)}
+        .fh{font-family:'DM Mono',monospace;font-size:9px;color:var(--dim);margin-top:5px;line-height:1.7;letter-spacing:.2px}
+        .fh b{color:var(--gold);font-weight:400}
+        .fh .ex{display:inline-block;margin-top:2px;padding:2px 8px;background:rgba(212,168,67,0.06);border:1px solid rgba(212,168,67,0.1);border-radius:5px;color:var(--text);font-weight:500;letter-spacing:1.5px}
+        .pe{display:none;margin-top:5px;font-family:'DM Mono',monospace;font-size:9px;color:var(--crimson)}
 
-        /* Card */
-        .card {
-            background: linear-gradient(165deg, rgba(12,30,61,0.9), rgba(4,22,49,0.95));
-            border: 1px solid rgba(196,18,48,0.15);
-            border-radius: 24px;
-            padding: 44px 36px;
-            backdrop-filter: blur(40px);
-            box-shadow:
-                0 0 0 1px rgba(255,255,255,0.03),
-                0 30px 60px -20px rgba(0,0,0,0.5),
-                0 0 100px -40px rgba(196,18,48,0.2);
-        }
+        .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px 24px;background:var(--crimson);color:#fff;border:none;border-radius:10px;font-family:'Cormorant Garamond',serif;font-size:15px;font-weight:600;letter-spacing:.5px;cursor:pointer;transition:all .4s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden}
+        .btn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,0.08));opacity:0;transition:opacity .4s}
+        .btn:hover::before{opacity:1}
+        .btn:hover{transform:translateY(-1px);box-shadow:0 10px 30px -8px rgba(196,18,48,0.4)}
+        .btn:active{transform:translateY(0)}
+        .btn svg{width:14px;height:14px;stroke-width:2}
 
-        /* Brand header */
-        .brand {
-            text-align: center;
-            margin-bottom: 36px;
-        }
-        .brand-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 14px;
-            background: rgba(196,18,48,0.1);
-            border: 1px solid rgba(196,18,48,0.2);
-            border-radius: 100px;
-            font-size: 11px;
-            font-weight: 500;
-            color: var(--crimson-glow);
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            margin-bottom: 20px;
-            animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
-        }
-        .brand-badge::before {
-            content: '';
-            width: 6px; height: 6px;
-            background: var(--crimson-glow);
-            border-radius: 50%;
-            animation: pulse-dot 2s ease-in-out infinite;
-        }
-        @keyframes pulse-dot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.8); }
-        }
-        .brand h1 {
-            font-size: 28px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            background: linear-gradient(135deg, #fff 0%, var(--text-muted) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
-        }
-        .brand p {
-            color: var(--text-dim);
-            font-size: 14px;
-            margin-top: 6px;
-            font-weight: 300;
-            animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
-        }
+        .feats{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.03);display:grid;grid-template-columns:1fr 1fr;gap:2px}
+        .ft{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;transition:background .3s}
+        .ft:hover{background:rgba(255,255,255,0.03)}
+        .ft .i{font-size:14px;flex-shrink:0}
+        .ft span{font-family:'DM Mono',monospace;font-size:9px;color:var(--mid);letter-spacing:.2px}
 
-        /* Steps */
-        .step { display: none; }
-        .step.active { display: block; animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .s2t{font-size:22px;font-weight:300;margin-bottom:16px;letter-spacing:-.3px}
+        .s2t em{font-weight:600;font-style:italic;color:var(--crimson)}
+        .ins{display:flex;gap:12px;align-items:flex-start;padding:7px 0;font-family:'DM Mono',monospace;font-size:10px;color:var(--mid);border-bottom:1px solid rgba(255,255,255,0.03);letter-spacing:.2px}
+        .ins:last-of-type{border:none}
+        .ins .n{width:18px;height:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(196,18,48,0.08);font-size:9px;font-weight:500;color:var(--crimson)}
+        .ins .n.ok{background:rgba(34,197,94,0.08);color:#22c55e}
+        .ins b{color:var(--text);font-weight:500}
 
-        /* Form elements */
-        .field { margin-bottom: 18px; }
-        .field label {
-            display: block;
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-bottom: 8px;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-        }
-        .field input {
-            width: 100%;
-            padding: 14px 16px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: var(--radius);
-            color: var(--text);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 15px;
-            outline: none;
-            transition: all 0.3s ease;
-        }
-        .field input::placeholder { color: var(--text-dim); font-family: 'Outfit', sans-serif; }
-        .field input:focus {
-            border-color: var(--crimson);
-            background: rgba(196,18,48,0.04);
-            box-shadow: 0 0 0 3px rgba(196,18,48,0.1);
-        }
+        .sec{display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:12px 14px;background:rgba(34,197,94,0.03);border:1px solid rgba(34,197,94,0.06);border-radius:10px}
+        .sec p{font-family:'DM Mono',monospace;font-size:9px;color:var(--mid);line-height:1.6;letter-spacing:.2px}
 
-        .hint-box {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            padding: 12px 14px;
-            background: rgba(212,168,67,0.06);
-            border: 1px solid rgba(212,168,67,0.12);
-            border-radius: 10px;
-            margin-bottom: 24px;
-        }
-        .hint-box span { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
-        .hint-box p { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+        .foot{text-align:center;margin-top:16px;font-family:'DM Mono',monospace;font-size:8px;color:var(--dim);letter-spacing:3px;text-transform:uppercase}
 
-        /* Button */
-        .btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            width: 100%;
-            padding: 15px 20px;
-            background: linear-gradient(135deg, var(--crimson) 0%, #a00e28 100%);
-            color: #fff;
-            border: none;
-            border-radius: var(--radius);
-            font-family: 'Outfit', sans-serif;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            letter-spacing: 0.3px;
-        }
-        .btn::before {
-            content: '';
-            position: absolute; inset: 0;
-            background: linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.1) 100%);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .btn:hover::before { opacity: 1; }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 30px -8px rgba(196,18,48,0.5); }
-        .btn:active { transform: translateY(0); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .btn svg { width: 18px; height: 18px; }
-
-        /* Features */
-        .features {
-            margin-top: 28px;
-            padding-top: 24px;
-            border-top: 1px solid rgba(255,255,255,0.06);
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-        .feature {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            background: rgba(255,255,255,0.02);
-            border-radius: 10px;
-            border: 1px solid rgba(255,255,255,0.04);
-            transition: all 0.3s;
-        }
-        .feature:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
-        .feature-icon {
-            width: 32px; height: 32px;
-            display: flex; align-items: center; justify-content: center;
-            background: rgba(196,18,48,0.1);
-            border-radius: 8px;
-            font-size: 14px;
-            flex-shrink: 0;
-        }
-        .feature span { font-size: 12px; color: var(--text-muted); line-height: 1.3; }
-
-        /* Loading state */
-        .loader-ring {
-            width: 56px; height: 56px;
-            border: 3px solid rgba(255,255,255,0.06);
-            border-top-color: var(--crimson-glow);
-            border-radius: 50%;
-            animation: spin 1s cubic-bezier(0.5, 0, 0.5, 1) infinite;
-            margin: 0 auto 24px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .loading-text {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .loading-sub {
-            color: var(--text-dim);
-            font-size: 13px;
-            font-weight: 300;
-        }
-        .loading-steps {
-            margin-top: 28px;
-            text-align: left;
-        }
-        .loading-step {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 0;
-            font-size: 13px;
-            color: var(--text-dim);
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-        }
-        .loading-step:last-child { border-bottom: none; }
-        .loading-step .num {
-            width: 24px; height: 24px;
-            display: flex; align-items: center; justify-content: center;
-            background: rgba(255,255,255,0.05);
-            border-radius: 6px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
-            flex-shrink: 0;
-        }
-        .loading-step.active { color: var(--text); }
-        .loading-step.active .num { background: rgba(196,18,48,0.2); color: var(--crimson-glow); }
-        .loading-step.done { color: var(--text-muted); }
-        .loading-step.done .num { background: rgba(34,197,94,0.15); color: #22c55e; }
-
-        /* Success */
-        .success-check {
-            width: 72px; height: 72px;
-            margin: 0 auto 24px;
-            background: rgba(34,197,94,0.1);
-            border: 2px solid rgba(34,197,94,0.3);
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            animation: pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-        }
-        @keyframes pop {
-            from { transform: scale(0); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
-        }
-        .success-check svg { width: 32px; height: 32px; color: #22c55e; }
-        .success-title {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            background: linear-gradient(135deg, #22c55e, #4ade80);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .success-msg { color: var(--text-muted); font-size: 14px; line-height: 1.6; font-weight: 300; }
-        .success-card {
-            margin-top: 24px;
-            padding: 16px;
-            background: rgba(34,197,94,0.06);
-            border: 1px solid rgba(34,197,94,0.15);
-            border-radius: 12px;
-        }
-        .success-card p { font-size: 13px; color: var(--text-muted); }
-        .success-card strong { color: var(--text); font-weight: 500; }
-
-        .error-msg {
-            display: none;
-            margin-top: 16px;
-            padding: 12px 16px;
-            background: rgba(248,113,113,0.08);
-            border: 1px solid rgba(248,113,113,0.2);
-            border-radius: 10px;
-            color: #f87171;
-            font-size: 13px;
-        }
-
-        /* Footer */
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 11px;
-            color: var(--text-dim);
-            animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
-        }
-        .footer a { color: var(--text-muted); text-decoration: none; }
+        @media(max-height:700px){.card{padding:22px 24px 20px}.hdr{margin-bottom:14px}.hdr h1{font-size:24px}.badge{margin-bottom:10px}.feats{margin-top:12px;padding-top:10px}}
+        @media(max-width:440px){.card{padding:24px 20px}.hdr h1{font-size:24px}.feats{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
-    <div class="bg">
-        <div class="orb"></div>
-        <div class="orb"></div>
-        <div class="orb"></div>
-    </div>
-    <div class="grid-lines"></div>
+    <canvas id="bg"></canvas>
+    <div class="grain"></div>
 
-    <div class="container">
+    <div class="wrap">
         <div class="card">
-            <div class="brand">
-                <div class="brand-badge">AUC Canvas</div>
-                <h1>Canvas Reminder</h1>
-                <p>Never miss an assignment again</p>
+            <div class="hdr">
+                <div class="badge">AUC Canvas</div>
+                <h1>Never miss<br>an <em>assignment</em></h1>
+                <p class="sub">WhatsApp reminders for your deadlines</p>
             </div>
+            <div class="line"></div>
 
-            <!-- Step 1 -->
             <div id="step1" class="step active">
-                    <div class="field">
-                        <label>Your Name</label>
-                        <input type="text" id="name" placeholder="Zeyad" required autocomplete="given-name">
-                    </div>
-                    <div class="field">
-                        <label>WhatsApp Number</label>
-                        <input type="tel" id="phone" placeholder="201XXXXXXXXX" required inputmode="numeric" autocomplete="tel">
-                    </div>
-                    <div class="hint-box">
-                        <span>💡</span>
-                        <p>Enter with country code, no + or spaces.</p>
-                    </div>
-                    <button class="btn" onclick="goToStep2()">
-                        Next
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
-                    </button>
-
-                <div class="features">
-                    <div class="feature">
-                        <div class="feature-icon">📅</div>
-                        <span>4x daily reminders</span>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-icon">🔔</div>
-                        <span>New upload alerts</span>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-icon">📖</div>
-                        <span>Browse courses</span>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-icon">💬</div>
-                        <span>WhatsApp chatbot</span>
-                    </div>
+                <div class="f"><label>Name</label><input type="text" id="name" placeholder="Your first name" required autocomplete="given-name"></div>
+                <div class="f">
+                    <label>WhatsApp Number</label>
+                    <input type="tel" id="phone" placeholder="201XXXXXXXXX" required inputmode="numeric" autocomplete="tel">
+                    <div class="fh">Enter as <b>20</b> + number without leading 0<br><span class="ex">2010XXXXXXXX</span></div>
+                    <div class="pe" id="phoneError"></div>
+                </div>
+                <button class="btn" onclick="goToStep2()">Get Started <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg></button>
+                <div class="feats">
+                    <div class="ft"><span class="i">📅</span><span>4x daily reminders</span></div>
+                    <div class="ft"><span class="i">🔔</span><span>New upload alerts</span></div>
+                    <div class="ft"><span class="i">📖</span><span>Browse courses</span></div>
+                    <div class="ft"><span class="i">💬</span><span>WhatsApp chatbot</span></div>
                 </div>
             </div>
 
-            <!-- Step 2: Install Extension -->
             <div id="step2" class="step">
-                <h2 style="font-size:18px;font-weight:600;margin-bottom:16px">Connect your Canvas</h2>
-
-                <a href="/extension" class="btn" style="margin-bottom:20px;text-decoration:none">
-                    Download Extension (.zip)
-                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                </a>
-
-                <div style="font-size:13px;color:var(--text-muted);line-height:2">
-                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">1</span>
-                        <span><strong style="color:var(--text)">Unzip</strong> the downloaded file</span>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">2</span>
-                        <span>Open Chrome, go to <strong style="color:var(--text)">chrome://extensions</strong></span>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">3</span>
-                        <span>Turn on <strong style="color:var(--text)">Developer mode</strong> (top right toggle)</span>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">4</span>
-                        <span>Click <strong style="color:var(--text)">Load unpacked</strong> (top left) and select the unzipped folder</span>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">5</span>
-                        <span>Click the <strong style="color:var(--text)">puzzle icon</strong> in Chrome toolbar, then click <strong style="color:var(--text)">Canvas Reminder</strong></span>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">6</span>
-                        <span>Enter your <strong style="color:var(--text)">name & WhatsApp number</strong>, click Save</span>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-                        <span style="background:var(--crimson);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">7</span>
-                        <span>Click <strong style="color:var(--text)">Open Canvas</strong>, log in normally with your AUC account</span>
-                    </div>
-                    <div style="display:flex;gap:10px;align-items:flex-start">
-                        <span style="background:#059669;color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">8</span>
-                        <span>Come back to extension, click <strong style="color:var(--text)">I'm logged in</strong> — done!</span>
-                    </div>
-                </div>
-
-                <div class="hint-box" style="margin-top:20px">
-                    <span>🔒</span>
-                    <p>We never see your password. The extension only reads your Canvas session cookie after you log in yourself.</p>
-                </div>
+                <div class="s2t">Connect <em>Canvas</em></div>
+                <a href="/extension" class="btn" style="margin-bottom:18px;text-decoration:none">Download Extension <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg></a>
+                <div class="ins"><div class="n">1</div><span><b>Unzip</b> the downloaded file</span></div>
+                <div class="ins"><div class="n">2</div><span>Chrome &rarr; <b>chrome://extensions</b></span></div>
+                <div class="ins"><div class="n">3</div><span>Enable <b>Developer mode</b> (top right)</span></div>
+                <div class="ins"><div class="n">4</div><span><b>Load unpacked</b> &rarr; select folder</span></div>
+                <div class="ins"><div class="n">5</div><span>Puzzle icon &rarr; <b>Canvas Reminder</b></span></div>
+                <div class="ins"><div class="n">6</div><span>Enter name &amp; number as <b>201XXXXXXXXX</b></span></div>
+                <div class="ins"><div class="n">7</div><span><b>Open Canvas</b>, log in with AUC account</span></div>
+                <div class="ins"><div class="n ok">8</div><span>Click <b>"I'm logged in"</b> &mdash; done</span></div>
+                <div class="sec"><span style="font-size:13px;flex-shrink:0">🔒</span><p>We never see your password. The extension only reads your Canvas session cookie after you log in.</p></div>
             </div>
         </div>
-        <div class="footer">Built for AUC students</div>
+        <div class="foot">Built for AUC students</div>
     </div>
+
+    <!-- Animated background: aurora blobs + floating motes -->
+    <script>
+    const c=document.getElementById('bg'),x=c.getContext('2d');
+    let W,H;
+    function resize(){W=c.width=innerWidth;H=c.height=innerHeight}
+    resize();addEventListener('resize',resize);
+
+    // Aurora blobs
+    const blobs=[
+        {x:.8,y:.2,r:350,color:[196,18,48],speed:.0003,phase:0},
+        {x:.15,y:.85,r:280,color:[10,58,138],speed:.00025,phase:2},
+        {x:.5,y:.5,r:200,color:[212,168,67],speed:.0004,phase:4,alpha:.04}
+    ];
+    // Floating motes
+    const motes=[];
+    for(let i=0;i<25;i++){
+        motes.push({
+            x:Math.random()*1.2-.1,y:Math.random(),
+            size:Math.random()*2+1,
+            speed:.0001+Math.random()*.0003,
+            dx:(Math.random()-.5)*.00015,
+            alpha:0,maxAlpha:.15+Math.random()*.25,
+            phase:Math.random()*Math.PI*2,
+            color:Math.random()>.5?[212,168,67]:[196,18,48]
+        });
+    }
+
+    let t=0;
+    function draw(){
+        t++;
+        x.clearRect(0,0,W,H);
+        x.fillStyle='#041631';
+        x.fillRect(0,0,W,H);
+
+        // Draw aurora
+        for(const b of blobs){
+            const ox=Math.sin(t*b.speed+b.phase)*60;
+            const oy=Math.cos(t*b.speed*.7+b.phase)*40;
+            const g=x.createRadialGradient(b.x*W+ox,b.y*H+oy,0,b.x*W+ox,b.y*H+oy,b.r);
+            const a=b.alpha||.14;
+            g.addColorStop(0,`rgba(${b.color},${a})`);
+            g.addColorStop(1,'rgba(0,0,0,0)');
+            x.fillStyle=g;
+            x.fillRect(0,0,W,H);
+        }
+
+        // Draw motes
+        for(const m of motes){
+            m.x+=m.dx;
+            m.y-=m.speed;
+            m.phase+=.02;
+            // Fade in/out based on y
+            if(m.y>0.1&&m.y<0.9)m.alpha+=(m.maxAlpha-m.alpha)*.02;
+            else m.alpha*=.98;
+            if(m.y<-0.05){m.y=1.05;m.x=Math.random()*1.2-.1;m.alpha=0}
+
+            const sx=m.x*W+Math.sin(m.phase)*20;
+            const sy=m.y*H;
+            x.beginPath();
+            x.arc(sx,sy,m.size,0,Math.PI*2);
+            x.fillStyle=`rgba(${m.color},${m.alpha})`;
+            x.fill();
+            // Glow
+            const gg=x.createRadialGradient(sx,sy,0,sx,sy,m.size*4);
+            gg.addColorStop(0,`rgba(${m.color},${m.alpha*.3})`);
+            gg.addColorStop(1,'rgba(0,0,0,0)');
+            x.fillStyle=gg;
+            x.fillRect(sx-m.size*4,sy-m.size*4,m.size*8,m.size*8);
+        }
+        requestAnimationFrame(draw);
+    }
+    draw();
+    </script>
+
     <script>
         function goToStep2() {
             const name = document.getElementById('name').value.trim();
-            const phone = document.getElementById('phone').value.replace(/[\s+\-]/g, '').trim();
+            let phone = document.getElementById('phone').value.replace(/[\\s+\\-]/g, '').trim();
+            const phoneInput = document.getElementById('phone');
+            const phoneError = document.getElementById('phoneError');
+
             if (!name) return alert('Please enter your name');
-            if (!phone || phone.length < 10) return alert('Please enter a valid phone number');
+
+            // Auto-fix: if starts with 0, prepend 20
+            if (phone.startsWith('0')) phone = '20' + phone.substring(1);
+
+            // Validate format: 20 + 10 digits
+            if (!/^20\\d{10}$/.test(phone)) {
+                phoneInput.classList.add('invalid');
+                phoneInput.classList.remove('valid');
+                phoneError.style.display = 'block';
+                phoneError.textContent = 'Must be 201XXXXXXXXX (12 digits starting with 20)';
+                return;
+            }
+
+            phoneInput.classList.remove('invalid');
+            phoneInput.classList.add('valid');
+            phoneError.style.display = 'none';
+
             document.getElementById('step1').classList.remove('active');
             document.getElementById('step2').classList.add('active');
         }
+
+        // Live validation on phone input
+        document.getElementById('phone').addEventListener('input', function() {
+            const val = this.value.replace(/[^0-9]/g, '');
+            const err = document.getElementById('phoneError');
+            this.classList.remove('invalid','valid');
+            err.style.display = 'none';
+            if (val.length >= 4) {
+                let check = val;
+                if (check.startsWith('0')) check = '20' + check.substring(1);
+                if (check.startsWith('20') && check.length <= 12) {
+                    if (check.length === 12) this.classList.add('valid');
+                } else if (!check.startsWith('20')) {
+                    this.classList.add('invalid');
+                    err.style.display = 'block';
+                    err.textContent = 'Must start with 20 (Egypt code)';
+                }
+            }
+        });
     </script>
 </body>
 </html>
@@ -835,6 +578,14 @@ async def register_cookies(request: Request):
 
     if not phone or not cookies:
         return {"success": False, "error": "Missing phone or cookies"}
+
+    # Auto-fix Egyptian numbers starting with 0
+    if phone.startswith("0"):
+        phone = "20" + phone[1:]
+
+    import re
+    if not re.match(r"^20\d{10}$", phone):
+        return {"success": False, "error": "Phone must be format 201XXXXXXXXX (country code 20 + number)"}
 
     add_user(phone, cookies, name=name)
     from src.canvas_service import invalidate_client
