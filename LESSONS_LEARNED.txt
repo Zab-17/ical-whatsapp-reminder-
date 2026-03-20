@@ -1,0 +1,870 @@
+Canvas Reminder Bot — Complete Technical Post-Mortem
+=====================================================
+Every problem, every attempt, every failure, every fix.
+
+
+================================================================================
+1. CANVAS API TOKEN — BLOCKED BY UNIVERSITY
+================================================================================
+
+GOAL: Access Canvas API to read courses, assignments, quizzes, modules
+
+ATTEMPT 1: Generate API token from Canvas UI
+- Went to https://aucegypt.instructure.com → Profile → Settings → New Access Token
+- Canvas showed tooltip: "Your Canvas administrators have chosen to limit your ability to
+  generate your own access token. Please reach out to your Canvas administrators."
+- AUC IT disabled the `users_can_generate_access_tokens` setting in Canvas admin
+- This is a per-institution Canvas setting, not a bug
+
+ATTEMPT 2: Create token via Canvas API endpoint
+- Tried POST /api/v1/users/self/tokens with CSRF token from browser session
+- Canvas returned 403 — same admin restriction applies to API-based token creation
+- Instructure's policy: tokens created via API follow same permissions as UI
+
+SOLUTION: Browser automation with Playwright
+- Use Playwright (headless Chromium) to automate the SSO login flow
+- Capture session cookies after successful login
+- Use cookies with httpx for API calls instead of canvasapi library
+- canvasapi library requires a token; we had to build our own httpx-based API layer
+
+TECHNICAL DETAIL:
+- Canvas API works with session cookies, not just tokens
+- Cookie-based auth sends cookies via the Cookie header
+- We built _api_get() in canvas_service.py using httpx.Client with cookies parameter
+- The canvasapi library (get_courses, get_assignments) only works with token auth
+- So we have two code paths: token mode (canvasapi) and cookie mode (httpx)
+
+
+================================================================================
+2. CANVAS SSO — SAML + MICROSOFT AZURE AD
+================================================================================
+
+GOAL: Automate Canvas login with Playwright
+
+ATTEMPT 1: Fill Canvas's own login form
+- Tried: page.fill('input[name="pseudonym_session[unique_id]"]', email)
+- Error: TimeoutError — selector not found
+- Canvas at /login/canvas didn't exist — AUC uses /login/saml exclusively
+
+INVESTIGATION:
+- Visited https://aucegypt.instructure.com/login
+- Page redirected to https://canvas.aucegypt.edu/ (custom landing page)
+- "Login" button linked to /login/saml
+- /login/saml redirected to Microsoft's SAML endpoint:
+  https://login.microsoftonline.com/c79467b8-b9cf-4b3a-9fba-009a52d544bb/saml2?SAMLRequest=...
+- This is AUC's Azure AD tenant (ID: c79467b8-b9cf-4b3a-9fba-009a52d544bb)
+
+SAML FLOW:
+1. Browser hits Canvas /login/saml
+2. Canvas generates SAMLRequest XML, base64 encodes it
+3. Redirects to Microsoft's SAML endpoint with the request
+4. Microsoft shows their login page (NOT Canvas's login page)
+5. User enters email → Microsoft shows password page
+6. User enters password → Microsoft triggers 2FA
+7. User approves 2FA on phone
+8. Microsoft generates SAMLResponse, POSTs back to Canvas
+9. Canvas validates the assertion, creates session, sets cookies
+10. Browser lands on Canvas dashboard
+
+SOLUTION:
+- Navigate to /login/saml (triggers redirect to Microsoft)
+- Wait for Microsoft's login page to load
+- Find email input: 'input[type="email"]' or 'input[name="loginfmt"]'
+- Fill email, click submit
+- Wait for password page (Microsoft uses multi-step login)
+- Find password input: 'input[type="password"]' or 'input[name="passwd"]'
+- Fill password, click submit
+- Wait for 2FA approval (up to 120 seconds)
+- Handle "Stay signed in?" prompt (#idBtn_Back or input[value="Yes"])
+- Wait for redirect back to instructure.com
+- Extract all cookies from browser context
+
+
+================================================================================
+3. MICROSOFT 2FA — CAN'T AUTOMATE
+================================================================================
+
+GOAL: Fully automate login without human interaction
+
+THE WALL:
+- After password entry, Microsoft shows "Approve sign in request"
+- Displays a 2-digit number (e.g., "54")
+- User must open Microsoft Authenticator app on phone
+- Match the number and tap "Approve"
+- This is by design — 2FA prevents automated access
+
+ATTEMPT 1: Check if TOTP is available
+- Some Microsoft accounts allow 6-digit TOTP codes instead of push notifications
+- AUC's Azure AD is configured for push-only (Authenticator app)
+- No TOTP option available for these accounts
+
+SOLUTION FOR LOCAL USE:
+- Launch browser with headless=False (visible window)
+- User sees the Microsoft login page, approves 2FA on their phone
+- Playwright waits up to 120 seconds for the redirect
+- After approval, cookies are captured and cached to canvas_cookies.json
+
+SOLUTION FOR SERVER (CLOUD):
+- Can't show a browser window on a headless server
+- Created Chrome extension that captures cookies from user's own browser
+- User logs into Canvas normally in their browser
+- Extension reads Canvas cookies via chrome.cookies.getAll()
+- Extension POSTs cookies to our server's /api/register-cookies endpoint
+- Server stores cookies in SQLite database
+
+
+================================================================================
+4. TWILIO WHATSAPP — SANDBOX LIMITATIONS
+================================================================================
+
+GOAL: Send WhatsApp messages to users
+
+SETUP:
+- Created Twilio account (free trial, $15.50 credit)
+- Activated WhatsApp Sandbox in Twilio Console
+- Sandbox number: +14155238886
+- User must send "join [code]" to sandbox number first
+
+PROBLEM 1: Wrong From number
+- .env had TWILIO_WHATSAPP_FROM=whatsapp:+16197651370
+- Actual sandbox number was whatsapp:+14155238886
+- Error: "Twilio could not find a Channel with the specified From address" (63007)
+- Fix: Copy exact number from Twilio Console → Messaging → WhatsApp Sandbox
+
+PROBLEM 2: 5 messages per day
+- Error: "Account exceeded the 5 daily messages limit" (63038)
+- This is a SANDBOX-specific limit, not a Twilio-wide limit
+- Applies to unverified accounts (no credit card on file)
+- Even failed sends count toward the limit
+- Resets at midnight UTC (not local time)
+- Fix required: Add billing info (credit card) to remove limit
+- We couldn't: No credit card available
+
+TECHNICAL DETAIL:
+- Twilio sandbox doesn't support interactive message templates
+- Can't send WhatsApp buttons or list messages via sandbox
+- We formatted buttons as numbered text: "1. Option A\n2. Option B\nReply with number"
+- Real Twilio WhatsApp (non-sandbox) supports Content Templates with buttons
+
+
+================================================================================
+5. META WHATSAPP CLOUD API — VERIFICATION HELL
+================================================================================
+
+GOAL: Switch to Meta's official WhatsApp API (free service conversations)
+
+ATTEMPT 1: Create Meta Developer Account
+- Signed up at developers.facebook.com
+- Verification step: "Verify your account by adding a mobile number"
+- Selected Egypt (+20), entered 01154069714
+- Error: "You can only complete this action in Accounts Center"
+- Phone number already linked to Facebook/Instagram via Accounts Center
+- Can't use same number for developer verification
+
+ATTEMPT 2: Send SMS verification
+- Clicked "Send Verification SMS"
+- SMS never arrived (common issue in Egypt)
+- Tried multiple times
+- Eventually got rate-limited: "Please slow down"
+- Cooldown period: several hours
+
+ATTEMPT 3: Credit card verification
+- Meta offers "verify by adding a credit card" option
+- No credit card available — dead end
+
+KEY LEARNING:
+- Meta Cloud API service conversations ARE free and unlimited (since Nov 2024)
+- But you MUST have a verified developer account
+- Verification requires either SMS (unreliable in some countries) or credit card
+- Even after verification, you can't use your personal WhatsApp number
+- You get a test number from Meta, or register a new business number
+- The API uses Bearer token auth, not session cookies
+
+
+================================================================================
+6. GREEN API — IT WORKS! (BUT COSTS MONEY)
+================================================================================
+
+GOAL: Find a WhatsApp API that works without credit card
+
+HOW IT WORKS:
+- Sign up at green-api.com with email (no credit card)
+- Create an "instance" — get Instance ID + API Token
+- Scan QR code with your WhatsApp (links your personal number)
+- Send via REST: POST https://api.green-api.com/waInstance{ID}/sendMessage/{TOKEN}
+- Payload: {"chatId": "201154069714@c.us", "message": "Hello"}
+
+RESULT: Messages sent successfully! No daily limit.
+
+PRICING:
+- 3-day free trial (fully functional)
+- After trial: ~$5/month per instance
+- One instance = one WhatsApp number
+
+WHY WE MOVED AWAY:
+- User doesn't want to pay anything
+- Explored free alternatives instead
+
+
+================================================================================
+7. BAILEYS — WHATSAPP BLOCKS IT
+================================================================================
+
+GOAL: Free unlimited WhatsApp via open-source library
+
+WHAT IS BAILEYS:
+- Node.js library by @whiskeysockets
+- Connects to WhatsApp via WebSocket protocol (same as WhatsApp Web)
+- Doesn't use a browser — direct protocol implementation
+- Much lighter than Puppeteer-based solutions
+
+ATTEMPT 1: Latest version (v7.0.0-rc.9)
+- npm install @whiskeysockets/baileys@latest
+- Error on connection: 405 "Method Not Allowed"
+- WhatsApp's server rejected the connection during device registration handshake
+- The rc.9 release sends `passive: true` which WhatsApp interprets as passive listener
+
+ATTEMPT 2: Stable version (v6.7.21)
+- Same 405 error
+- WhatsApp actively blocks connections from datacenter IPs
+- Their server checks if the connecting IP is a residential or datacenter IP
+- Datacenter IPs (like your local machine or cloud server) get rejected
+
+POTENTIAL FIX (didn't try):
+- Use a residential proxy (Smartproxy, Bright Data) to route traffic
+- Makes WhatsApp think you're connecting from a home network
+- Costs money — defeats the purpose
+
+TECHNICAL DETAIL:
+- Baileys uses the Signal Protocol for encryption
+- WhatsApp's protocol version is hardcoded in the library
+- When WhatsApp updates their protocol, Baileys breaks
+- The library must be updated to match WhatsApp's current protocol version
+- This is a constant cat-and-mouse game
+
+
+================================================================================
+8. WHATSAPP-WEB.JS — THE WINNER (LOCALLY)
+================================================================================
+
+GOAL: Find a WhatsApp automation that actually works
+
+HOW IT WORKS:
+- Node.js library that wraps Puppeteer (headless Chrome)
+- Opens a real Chrome browser instance
+- Navigates to web.whatsapp.com
+- Generates QR code for WhatsApp linking
+- Once linked, can send/receive messages via the browser
+- WhatsApp thinks it's a normal WhatsApp Web session
+
+WHY IT WORKS:
+- Uses a real browser (not raw WebSocket like Baileys)
+- Traffic looks identical to a human using WhatsApp Web
+- Harder for WhatsApp to detect and block
+- Browser fingerprint matches a real Chrome installation
+
+SETUP:
+- npm install whatsapp-web.js
+- Create Client with LocalAuth (persists session to disk)
+- Listen for 'qr' event → display QR code
+- Listen for 'ready' event → connected
+- Listen for 'message' event → incoming messages
+- client.sendMessage(chatId, text) → outgoing messages
+
+CHAT ID FORMAT:
+- Phone numbers: "201154069714@c.us"
+- Groups: "groupid@g.us"
+- Some accounts use LID: "100111610835028@lid" (more on this in problem #20)
+
+
+================================================================================
+9. DEPLOYING PUPPETEER/CHROMIUM ON FLY.IO — A SAGA
+================================================================================
+
+GOAL: Run whatsapp-web.js on a cloud server (Fly.io)
+
+PROBLEM: Chromium is a full web browser. Running it on a server is hard.
+
+ATTEMPT 1: System Chromium + PUPPETEER_SKIP_DOWNLOAD
+- Installed Chromium via apt-get in Dockerfile
+- Set PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+- Set PUPPETEER_SKIP_DOWNLOAD=true (don't download Puppeteer's Chromium)
+- Error: "Timed out after 30000ms while waiting for the WS endpoint URL"
+- Root cause: System Chromium version didn't match what Puppeteer expected
+- Puppeteer communicates with Chrome via DevTools Protocol (WebSocket)
+- Different Chrome versions have different protocol versions
+- Mismatch = can't communicate = timeout
+
+ATTEMPT 2: System Chromium + whatsapp-web.js 1.26.1-alpha.3
+- Tried an older version of whatsapp-web.js that bundles compatible Puppeteer
+- QR code generated successfully!
+- But sendMessage() crashed: "Evaluation failed" in ExecutionContext
+- The older whatsapp-web.js injects JavaScript into WhatsApp Web's page
+- System Chromium's V8 engine was too new for the injected code
+- JavaScript API differences between Chrome versions broke the evaluation
+
+ATTEMPT 3: webVersionCache remote
+- whatsapp-web.js has a webVersionCache option
+- Downloads a specific WhatsApp Web version HTML to avoid version mismatches
+- Set remotePath to a GitHub-hosted WhatsApp Web version
+- Still got "Requesting main frame too early!"
+- The issue was Puppeteer <-> Chrome protocol mismatch, not WhatsApp Web version
+
+ATTEMPT 4: puppeteer-core with explicit executablePath
+- Installed puppeteer-core (no bundled Chromium)
+- Set executablePath to /usr/bin/chromium explicitly
+- npm ci failed: package-lock.json didn't match the new package.json
+- Even after fixing, same "main frame too early" error
+
+ATTEMPT 5 (SUCCESS): Let Puppeteer download its own Chromium
+- Removed PUPPETEER_SKIP_DOWNLOAD
+- Removed PUPPETEER_EXECUTABLE_PATH
+- Let npm install download the exact Chrome version Puppeteer expects
+- Dockerfile: RUN cd whatsapp-bridge && npm install --production
+- This downloads ~170MB Chromium binary during Docker build
+- Result: QR code works, sendMessage works, everything works!
+
+CHROMIUM LAUNCH FLAGS (required for Docker/server):
+--no-sandbox          # Docker runs as root, sandbox conflicts
+--disable-setuid-sandbox  # Same reason
+--disable-dev-shm-usage   # /dev/shm is only 64MB in Docker, Chrome needs more
+--disable-gpu         # No GPU available on server
+
+MEMORY REQUIREMENTS:
+- Default Fly.io VM: 256MB → OOM kill
+- 512MB → Chromium launches but struggles
+- 1GB → Works but slow (sendMessage takes 20-90 seconds)
+- 2GB → Reasonable performance (max for shared-cpu-1x on Fly.io)
+
+
+================================================================================
+10. DOCKER BUILD — NODE_MODULES UPLOAD PROBLEM
+================================================================================
+
+GOAL: Fast deploys to Fly.io
+
+PROBLEM:
+- Every `flyctl deploy` uploads the Docker build context
+- Without .dockerignore, this included node_modules/ (~280MB)
+- Uploads took 3-5 minutes just for the context transfer
+
+SOLUTION:
+Created .dockerignore:
+  whatsapp-bridge/node_modules    # 280MB saved
+  whatsapp-bridge/auth_session    # WhatsApp session data
+  whatsapp-bridge/.wwebjs_cache   # WhatsApp Web cache
+  __pycache__                     # Python bytecode
+  .git                            # Git history
+  *.db                            # SQLite databases
+  .env                            # Secrets
+
+Docker builds node_modules fresh inside the container via npm install.
+Deploy context dropped from ~300MB to ~2MB.
+
+
+================================================================================
+11. PYTHON PERCENT SIGNS IN HTML TEMPLATE STRINGS
+================================================================================
+
+GOAL: Serve HTML pages with CSS from Python strings
+
+PROBLEM:
+- CSS uses % in values: border-radius: 50%, width: 100%
+- Python's % operator for string formatting interprets % as format specifiers
+- If you write body = "width: 100%" % somevar → crash
+- Common "fix": escape as %% → "width: 100%%"
+
+OUR MISTAKE:
+- We used %% in CSS inside LANDING_HTML and CALLBACK_HTML strings
+- But these strings were NOT being formatted with % — just plain assignment
+- LANDING_HTML = """...""" (no % formatting applied)
+- The %% rendered literally in the browser: "border-radius: 50%%"
+- This broke CSS rules — elements didn't render properly
+- The phone number input was invisible because its container had broken CSS
+
+FIX:
+- Replaced all %% with % since we're not using % string formatting
+- Used replace_all=True in the Edit tool to catch all occurrences
+
+
+================================================================================
+12. CHROME EXTENSION — MANIFEST V3 RESTRICTIONS
+================================================================================
+
+GOAL: Build Chrome extension to capture Canvas cookies
+
+PROBLEM 1: Inline scripts blocked
+- Wrote <script>function doSomething() {...}</script> in popup.html
+- Error: "Executing inline script violates Content Security Policy directive 'script-src self'"
+- Manifest V3 has strict CSP: only external script files allowed
+- No inline <script> tags, no onclick="..." attributes, no javascript: URLs
+- Fix: Move all JS to popup.js, reference with <script src="popup.js">
+
+PROBLEM 2: Inline event handlers blocked
+- Used <button onclick="save()"> in popup.html
+- Same CSP error — onclick is an inline event handler
+- Fix: Use document.getElementById('btn').addEventListener('click', fn) in popup.js
+
+PROBLEM 3: Missing storage permission
+- Used chrome.storage.local.set() without declaring permission
+- Error: "Cannot read properties of undefined (reading 'local')"
+- chrome.storage API requires "storage" in manifest.json permissions array
+- Fix: Added "storage" to permissions: ["cookies", "storage"]
+
+PROBLEM 4: Missing host permission for server
+- Extension called fetch('https://canvas-reminder-auc.fly.dev/api/register-cookies')
+- Error: "Failed to fetch"
+- Extensions need host_permissions for every external domain they contact
+- Fix: Added "https://canvas-reminder-auc.fly.dev/*" to host_permissions
+
+PROBLEM 5: Old extension cached
+- After fixing popup.html, Chrome still showed old version
+- Chrome aggressively caches extension files
+- Clicking "reload" icon in chrome://extensions sometimes isn't enough
+- Fix: Completely remove extension, then "Load unpacked" again
+
+
+================================================================================
+13. CANVAS API PAGINATION — URL DOUBLING
+================================================================================
+
+GOAL: Fetch all assignments (Canvas paginates results, 10 per page)
+
+HOW CANVAS PAGINATION WORKS:
+- Response includes Link header: <https://domain/api/v1/courses/123/assignments?page=2>; rel="next"
+- Client follows the "next" URL to get the next page
+- Continue until no "next" link
+
+OUR BUG:
+- httpx.Client base_url was set to "https://aucegypt.instructure.com/api/v1"
+- Our code called _api_get("/courses/123/assignments")
+- httpx prepended base_url: "https://aucegypt.instructure.com/api/v1/courses/123/assignments" ✓
+- Canvas returned next page URL: "https://aucegypt.instructure.com/api/v1/courses/123/assignments?page=2"
+- We parsed the URL to get the path: "/api/v1/courses/123/assignments?page=2"
+- httpx prepended base_url again: "https://aucegypt.instructure.com/api/v1/api/v1/courses/123/..."
+- Double /api/v1 → 404 Not Found
+
+FIX:
+- Changed base_url to just "https://aucegypt.instructure.com" (no /api/v1)
+- Added /api/v1 prefix to all path constants in the code
+- Pagination URLs from Canvas already include the full path, so no doubling
+
+
+================================================================================
+14. WHATSAPP @LID vs @C.US — IDENTITY FORMAT MISMATCH
+================================================================================
+
+GOAL: Receive and respond to all WhatsApp messages correctly
+
+WHAT IS @LID:
+- WhatsApp has two identifier formats for users:
+  1. @c.us — based on phone number: "201154069714@c.us"
+  2. @lid — Linked ID, an internal identifier: "100111610835028@lid"
+- LID was introduced with WhatsApp's multi-device architecture
+- Some accounts (seemingly random) use LID instead of phone-based IDs
+- LID is NOT the phone number — it's an opaque identifier
+
+HOW IT BROKE OUR APP:
+- User registers with phone number "201002416119" via Chrome extension
+- Database stores: phone = "201002416119"
+- User sends "hi" on WhatsApp
+- Bridge receives message from "100111610835028@lid"
+- Bridge strips @lid → forwards "100111610835028" to Python
+- Python looks up "100111610835028" in database → NOT FOUND
+- Python sends "You're not registered" message
+
+ALSO BROKE SENDING:
+- Reminder tries to send to "201002416119"
+- Bridge formats as "201002416119@c.us"
+- WhatsApp delivers via @c.us for some accounts, but LID accounts need @lid
+- Message sent but never delivered (silently dropped)
+
+FIX (PARTIAL):
+- Bridge: strip both @c.us and @lid from incoming messages
+- Bridge: detect LID format (>15 digits) and append @lid instead of @c.us when sending
+- Database: manually duplicate user entry with LID as phone field
+- Used SSH to run SQL on Fly.io server to create LID entries
+
+FIX NEEDED (PERMANENT):
+- When user first messages bot, detect if they're using LID
+- Auto-update their database entry to use LID as primary identifier
+- Store both phone number and LID for reference
+
+
+================================================================================
+15. FLY.IO — WHATSAPP SESSION DOESN'T PERSIST ACROSS DEPLOYS
+================================================================================
+
+GOAL: WhatsApp stays connected after code deploys
+
+THE PROBLEM:
+- whatsapp-web.js stores session in auth_session/ directory
+- Every deploy creates a new Docker container
+- New container = empty filesystem = no session = need to scan QR again
+- Had to re-scan QR after every single deploy
+
+SOLUTION:
+- Fly.io "mounts" — persistent volumes that survive deploys
+- Created volume: flyctl volumes create canvas_data --region fra --size 1
+- Mounted at /data in fly.toml: [mounts] source='canvas_data' destination='/data'
+- Set WA_SESSION_PATH=/data/wa_session in environment
+- whatsapp-web.js stores session on persistent volume
+- Session survives deploys... mostly
+
+STILL BREAKS WHEN:
+- Container restarts (session files might get corrupted)
+- Puppeteer version changes between deploys (session format may change)
+- WhatsApp forces a session reset (every few months)
+- In practice: still need to re-scan QR after ~50% of deploys
+
+
+================================================================================
+16. MULTI-PROCESS IN DOCKER — NODE + PYTHON
+================================================================================
+
+GOAL: Run both Node.js (WhatsApp bridge) and Python (FastAPI) in one container
+
+ATTEMPT 1: supervisord
+- Installed supervisor via apt-get
+- Created supervisord config with two [program:] sections
+- Problem: supervisor's stdout_logfile=/dev/stdout caused issues on Fly.io
+- Fly.io captures stdout for logging — supervisor's file-based approach conflicted
+
+ATTEMPT 2 (SUCCESS): Simple bash script
+  #!/bin/bash
+  echo "Starting WhatsApp bridge..."
+  node /app/whatsapp-bridge/index.js &    # Background process
+  echo "Starting Python server..."
+  exec /app/venv/bin/uvicorn src.webhook:app --host 0.0.0.0 --port 8000  # Foreground
+
+KEY DETAILS:
+- Node runs in background (&) — if it crashes, it's gone (no auto-restart)
+- Python runs in foreground (exec) — if it crashes, container restarts
+- Only port 8000 (Python) is exposed to the internet
+- Node listens on port 3001 internally (localhost only)
+- Python proxies requests to Node when needed (e.g., /qr endpoint)
+
+WHY NOT TWO CONTAINERS:
+- Fly.io free tier: limited to minimal resources
+- Two containers = double the memory cost
+- Communication between containers adds latency
+- Single container = localhost communication (fast, simple)
+
+
+================================================================================
+17. NPM CI vs NPM INSTALL IN DOCKER
+================================================================================
+
+GOAL: Reliable dependency installation during Docker build
+
+npm ci:
+- Requires package-lock.json to exist and exactly match package.json
+- Deletes node_modules/ and installs from scratch
+- Faster and more reproducible than npm install
+- FAILS if package.json was changed without running npm install locally first
+
+npm install:
+- Reads package.json, resolves dependencies, generates/updates package-lock.json
+- More forgiving — works even if lock file is outdated
+- Slightly slower but always works
+
+OUR PROBLEM:
+- We changed package.json (new dependencies) without running npm install locally
+- Committed package.json without updated package-lock.json
+- Dockerfile had: RUN npm ci --production
+- npm ci saw the mismatch and failed
+
+FIX:
+- Changed Dockerfile to: RUN npm install --production
+- Also: removed package-lock.json from .dockerignore so it gets copied if present
+- For production apps: always run npm install locally, commit both files, use npm ci in Docker
+
+
+================================================================================
+18. FLY.IO TOKEN EXPIRATION
+================================================================================
+
+GOAL: Deploy to Fly.io from command line
+
+PROBLEM:
+- flyctl auth tokens expire periodically
+- Commands fail with: "token validation error"
+- No clear error message — just "Error: failed to list VMs"
+
+SYMPTOMS:
+- flyctl machines list → Error: Authenticate
+- flyctl logs → Error: token validation error
+- flyctl deploy → works (uses different auth flow?)
+
+FIX:
+- Run: flyctl auth login
+- Opens browser for re-authentication
+- New token stored in ~/.fly/config.yml
+- Must re-run periodically (exact expiry unclear)
+
+
+================================================================================
+KEY TECHNICAL ARCHITECTURE DECISIONS
+================================================================================
+
+1. COOKIE-BASED AUTH vs TOKEN-BASED AUTH
+   - Tokens are better (long-lived, revocable, standard)
+   - Cookies were our only option since AUC blocks token creation
+   - Cookies expire, need refresh, are tied to browser sessions
+   - If we could get an OAuth developer key from AUC IT, everything would be simpler
+
+2. CHROME EXTENSION vs BOOKMARKLET vs SERVER-SIDE PLAYWRIGHT
+   - Server-side Playwright: requires user credentials on our server (rejected)
+   - Bookmarklet: user drags link to bookmarks, clicks after login (friction)
+   - Chrome extension: install once, auto-detects Canvas login (chosen)
+   - Tradeoff: extension requires "developer mode" install steps (can't publish to
+     Chrome Web Store without $5 developer fee... which requires a credit card)
+
+3. WHATSAPP-WEB.JS vs GREEN API vs BAILEYS
+   - Green API: works but costs $5/month
+   - Baileys: free but WhatsApp blocks it
+   - whatsapp-web.js: free, works, but needs Chromium (memory-heavy)
+   - Tradeoff: we use more server memory to avoid monthly costs
+
+4. SINGLE CONTAINER vs MICROSERVICES
+   - Could split Node bridge and Python server into separate containers
+   - Chose single container for simplicity and localhost communication speed
+   - Tradeoff: if bridge crashes, Python can't send messages until next restart
+
+5. SQLITE vs POSTGRES
+   - SQLite: zero setup, single file, perfect for <1000 users
+   - Postgres: better for concurrent writes, requires separate service
+   - Chose SQLite stored on persistent Fly.io volume
+   - Will need migration if we exceed ~1000 concurrent users
+
+
+================================================================================
+19. WHATSAPP-WEB.JS ZOMBIE CONNECTION — SILENT MESSAGE LOSS (2026-03-19)
+================================================================================
+
+GOAL: Understand why reminders stopped arriving on March 19 after 11am
+
+SYMPTOMS:
+- Bridge health endpoint returned {"status":"ok","connected":true}
+- /send endpoint returned {"success":true,"id":"3EB0..."}
+- But messages never reached users on WhatsApp
+- No errors in logs — everything looked healthy
+- Reminders appeared to send successfully but were silently dropped
+
+ROOT CAUSE:
+- Puppeteer's internal JavaScript context got corrupted
+- The underlying Chromium browser process was alive but its DevTools Protocol
+  session was broken
+- The whatsapp-web.js Client object still had isConnected=true because the
+  'disconnected' event never fired
+- sendMessage() returned a result object (the library thought it sent) but
+  the actual WebSocket to WhatsApp Web was dead
+- This is a known issue with Puppeteer on memory-constrained servers (2GB)
+
+HOW WE DISCOVERED IT:
+- Sent test message via SSH: flyctl ssh → node -e "fetch('/send'...)"
+- Bridge returned success, asked user — message never arrived
+- Confirmed: zombie connection — reports healthy but actually dead
+
+WHY IT HAPPENED:
+- 2GB Fly.io VM running Chromium (500MB+) + Node + Python
+- Memory pressure causes Chromium's V8 engine to become unstable
+- WhatsApp Web page inside Chromium may reload or crash silently
+- Puppeteer's DevTools Protocol connection breaks but doesn't fire disconnect
+- The bridge has no mechanism to detect this zombie state
+
+ATTEMPTED FIX:
+- Restarted Fly.io machine: flyctl machines restart
+- But Chromium failed to start again: "Runtime.callFunctionOn timed out"
+- Then on retry: "The browser is already running" (zombie lock file)
+- Container had no kill/pkill/ps commands to manage processes
+- Full machine restart needed, then QR re-scan required
+
+DECISION: This was the final straw — replaced whatsapp-web.js entirely
+
+
+================================================================================
+20. REPLACING WHATSAPP-WEB.JS WITH BAILEYS (2026-03-20)
+================================================================================
+
+GOAL: Eliminate Chromium dependency, stop zombie connection crashes
+
+OPTIONS EXPLORED:
+1. whatsapp-web.js (current) — Puppeteer/Chromium, keeps crashing on 2GB server
+2. Baileys (@whiskeysockets/baileys) — WebSocket only, no browser, ~80MB RAM
+3. whatsmeow (Go) — Same approach as Baileys but in Go, would need full rewrite
+4. WPPConnect — Also Puppeteer-based, same problem as whatsapp-web.js
+5. wa-automate — Puppeteer-based + moved to paid model
+6. Evolution API — Baileys wrapped in REST API, more overhead
+7. Green API — Works but costs $5/month, no credit card
+
+CHOSEN: Baileys
+WHY:
+- No Chromium needed — direct WebSocket connection to WhatsApp servers
+- Node.js — same language as existing bridge, minimal rewrite
+- ~80MB RAM vs ~500MB+ for Chromium
+- Active community (WhiskeySockets fork)
+- 10 messages/day is well below any spam detection threshold
+- Session persists via useMultiFileAuthState (files, not browser session)
+
+NOTE ON PREVIOUS BAILEYS FAILURE (Problem #7):
+- In 2026-03-18, Baileys v7 (rc.9) gave 405 errors
+- We assumed WhatsApp was blocking datacenter IPs
+- ACTUAL CAUSE: We were using an incompatible version without
+  fetchLatestBaileysVersion() — the protocol version was wrong
+- Solution: Use v6.7.16 + fetchLatestBaileysVersion() to get correct
+  WhatsApp protocol version at runtime
+- The 405 was NOT IP-based blocking — it was a protocol version mismatch
+
+IMPLEMENTATION:
+- Rewrote whatsapp-bridge/index.js (119 lines → 160 lines)
+- Replaced: new Client({puppeteer:...}) → makeWASocket({version, auth:...})
+- Key differences:
+  - JID format: @s.whatsapp.net (not @c.us)
+  - Auth: useMultiFileAuthState saves to files (not browser LocalAuth)
+  - QR: comes via connection.update event's qr field
+  - printQRInTerminal deprecated in v6 — must handle QR manually
+  - fetchLatestBaileysVersion() REQUIRED or you get 405 errors
+- Updated package.json: removed whatsapp-web.js+puppeteer, added baileys+pino+@hapi/boom
+- Updated Dockerfile: removed ALL Chromium system deps (~500MB smaller image)
+- Docker image went from ~1.2GB to ~700MB
+
+PROBLEMS DURING MIGRATION:
+1. npm install failed in Docker — Baileys dependency needs git
+   Fix: Added git to Dockerfile apt-get install
+2. printQRInTerminal deprecated — QR code never appeared
+   Fix: Removed the option, QR comes via connection.update event
+3. Old whatsapp-web.js session files caused 405 errors
+   Fix: Cleared /data/wa_session directory on server
+4. fetchLatestBaileysVersion() was missing — 405 on every connect
+   Fix: Added version fetch before creating socket
+
+
+================================================================================
+21. BAILEYS LID PROBLEM — INCOMING MESSAGES USE @LID JID (2026-03-20)
+================================================================================
+
+GOAL: Respond to messages from all users including new ones
+
+SYMPTOMS:
+- New user Anas (201101588288) sent "hi" to the bot
+- Bridge received the message and forwarded to Python
+- Python looked up user, found them, sent reply
+- Reply sent to "4321072664779@s.whatsapp.net" — message never arrived
+- No error — bridge reported success
+
+ROOT CAUSE:
+- Baileys reports incoming messages with remoteJid as LID format:
+  "4321072664779:47@lid"
+- Our bridge code stripped @lid and forwarded "4321072664779" as the sender
+- Python stored "4321072664779" as the reply-to number
+- When replying, bridge formatted as "4321072664779@s.whatsapp.net"
+- This JID doesn't exist — WhatsApp silently drops the message
+- The REAL phone number was in msg.key.senderPn: "201101588288@s.whatsapp.net"
+
+FIX:
+- Bridge now checks msg.key.senderPn first (real phone number)
+- Falls back to remoteJid only if senderPn is unavailable
+- Code: const from = msg.key.senderPn
+    ? msg.key.senderPn.replace('@s.whatsapp.net', '')
+    : remoteJid.replace(/@.*/, '')
+
+KEY LEARNING:
+- Baileys uses @s.whatsapp.net for SENDING (phone number based)
+- But RECEIVES messages with @lid JIDs for some users
+- senderPn field contains the actual phone number
+- This is different from whatsapp-web.js which used @c.us and @lid
+- With Baileys, you should ALWAYS use senderPn for reply-to addresses
+
+
+================================================================================
+22. STALE HTTPX CLIENT CACHE — COOKIES VALID BUT API RETURNS 401 (2026-03-20)
+================================================================================
+
+GOAL: Understand why Canvas API returned 401 despite valid cookies in DB
+
+SYMPTOMS:
+- User re-registered via Chrome extension (new cookies saved to DB)
+- Tested cookies directly with urllib.request → 200 OK, returned user name
+- But conversation flow returned "session may have expired" (401)
+- Same cookies, same user, same server — different results
+
+ROOT CAUSE:
+- canvas_service.py caches httpx.Client objects per phone number (line 23):
+  _clients: dict[str, httpx.Client] = {}
+- When a user re-registers, new cookies are saved to the database
+- But the OLD httpx.Client (with old, expired cookies) is still cached
+- _get_client() returns the cached client, never reads new cookies from DB
+- Direct test worked because it created a fresh client
+- The cache has no expiry or invalidation mechanism
+
+FIX:
+- Added invalidate_client(phone) call in register_cookies endpoint (web.py)
+- When cookies are updated, the cached client is removed
+- Next API call creates a fresh client with the new cookies
+- Also: server restart clears the cache (dict is in-memory)
+
+PREVENTION:
+- Any code path that updates user cookies MUST call invalidate_client()
+- Current paths: /api/register-cookies, /api/capture-session
+- Could add TTL-based cache expiry, but invalidation on update is simpler
+
+
+================================================================================
+23. TIMEZONE DISPLAY — UTC TIMES SHOWN TO CAIRO USERS (2026-03-20)
+================================================================================
+
+GOAL: Show assignment due times in Cairo timezone (UTC+2)
+
+PROBLEM:
+- Canvas API returns due_at in UTC: "2026-03-24T21:59:00Z"
+- Our code displayed with strftime("%I:%M %p") → "09:59 PM"
+- Actual Cairo time: 11:59 PM (UTC+2)
+- Users saw wrong times and could miss deadlines
+
+WHERE IT BROKE:
+- models.py: AssignmentInfo.due_str() and QuizInfo.due_str()
+- reminder.py: strftime on due_at for reminder message formatting
+- conversation.py: handle_upcoming() time display and _group_by_date()
+
+FIX:
+- Added CAIRO_TZ = timezone(timedelta(hours=2)) constant
+- All display functions now call due_at.astimezone(CAIRO_TZ) before formatting
+- Affects: due_str(), posted_str(), reminder messages, upcoming view, date grouping
+
+NOTE: This is a fixed UTC+2 offset. Egypt does not observe DST (abolished in 2014).
+If deployed for universities in DST-observing countries, would need pytz or zoneinfo.
+
+
+================================================================================
+24. PHONE NUMBER FORMAT CHAOS — USERS ENTER WRONG FORMATS (2026-03-20)
+================================================================================
+
+GOAL: Ensure all phone numbers are stored as 201XXXXXXXXX (12 digits)
+
+PROBLEM:
+- Users entered numbers in many formats:
+  - 01154069714 (local Egyptian, missing country code)
+  - +201154069714 (with plus)
+  - 20 1154069714 (with spaces)
+  - 1154069714 (no prefix at all)
+- Some numbers got stored incorrectly in the database
+- Baileys requires exact format: number@s.whatsapp.net
+
+FIX — THREE LAYERS:
+1. Chrome extension (popup.js):
+   - Auto-prepends "20" if number starts with "0"
+   - Validates regex: /^20\d{10}$/
+   - Shows alert with format example if invalid
+
+2. Web page (landing page JS):
+   - Same auto-fix and validation
+   - Live validation: input border turns green when valid, red when invalid
+   - Shows inline error message with format example
+
+3. Server-side (/api/register-cookies in web.py):
+   - Auto-fix: if phone.startswith("0"): phone = "20" + phone[1:]
+   - Validates with re.match(r"^20\d{10}$", phone)
+   - Returns error message if invalid
+
+EXAMPLE SHOWN TO USERS: 2010XXXXXXXX (masked, not a real number)
