@@ -618,17 +618,24 @@ async def admin_dashboard(key: str):
         return HTMLResponse("Unauthorized", status_code=403)
 
     from src.database import get_all_users
+    from src.canvas_service import check_cookies_valid
     users = get_all_users()
 
     rows = ""
+    valid_count = 0
     for u in users:
         status = "🟢 Active" if u.get("active", 1) else "🔴 Inactive"
-        hours = u.get("reminder_hours", "8,11,15,19")
+        hours = u.get("reminder_hours", "8,20")
+        cookies_ok = check_cookies_valid(u["phone"])
+        if cookies_ok:
+            valid_count += 1
+        cookies_badge = '🟢 Valid' if cookies_ok else '🔴 Expired'
         rows += f"""
         <tr>
             <td>{u.get('name', '—')}</td>
             <td style="font-family:'JetBrains Mono',monospace">{u['phone']}</td>
             <td>{status}</td>
+            <td>{cookies_badge}</td>
             <td>{hours}</td>
             <td>{u['created_at'][:10]}</td>
             <td>{u['last_login'][:10]}</td>
@@ -671,12 +678,16 @@ async def admin_dashboard(key: str):
                     <div class="label">Unsubscribed</div>
                 </div>
                 <div class="stat">
+                    <div class="num">{valid_count}/{len(users)}</div>
+                    <div class="label">Valid Cookies</div>
+                </div>
+                <div class="stat">
                     <div class="num">{len(users)}</div>
                     <div class="label">Total</div>
                 </div>
             </div>
             <table>
-                <tr><th>Name</th><th>Phone</th><th>Status</th><th>Reminder Hours (UTC)</th><th>Registered</th><th>Last Login</th><th>Action</th></tr>
+                <tr><th>Name</th><th>Phone</th><th>Status</th><th>Cookies</th><th>Reminder Hours (UTC)</th><th>Registered</th><th>Last Login</th><th>Action</th></tr>
                 {rows}
             </table>
         </div>

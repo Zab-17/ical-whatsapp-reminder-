@@ -45,6 +45,16 @@ def invalidate_client(phone: str) -> None:
     _clients.pop(phone, None)
 
 
+def check_cookies_valid(phone: str) -> bool:
+    """Quick check if user's Canvas cookies still work."""
+    try:
+        client = _get_client(phone)
+        resp = client.get("/api/v1/users/self")
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def _api_get(phone: str, path: str, params: dict | None = None) -> list | dict:
     client = _get_client(phone)
     results = []

@@ -31,7 +31,7 @@ def send_all_reminders() -> None:
 
 def send_reminder_for_user(phone: str, name: str = "") -> None:
     try:
-        items = canvas_service.get_upcoming_items(phone)
+        items = [a for a in canvas_service.get_upcoming_items(phone) if not a.submitted]
     except Exception as e:
         logger.error("Failed to fetch items for %s: %s", phone, e)
         whatsapp_service.send_text("❌ Your Canvas session may have expired. Please re-login.", to=phone)

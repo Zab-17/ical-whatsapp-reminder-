@@ -30,10 +30,13 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 last_login TEXT NOT NULL,
                 snapshot TEXT DEFAULT '{}',
-                reminder_hours TEXT DEFAULT '8,11,15,19',
+                reminder_hours TEXT DEFAULT '8,20',
                 active INTEGER DEFAULT 1
             )
         """)
+    # Migrate existing users from old 4x/day schedule to new 2x/day default
+    with _conn() as conn:
+        conn.execute("UPDATE users SET reminder_hours = '8,20' WHERE reminder_hours = '8,11,15,19'")
     logger.info("Database initialized at %s", _db_path)
 
 
@@ -119,8 +122,8 @@ def get_active_users() -> list[dict]:
 def get_user_reminder_hours(phone: str) -> list[int]:
     user = get_user(phone)
     if not user:
-        return [8, 11, 15, 19]
-    return [int(h) for h in (user.get("reminder_hours") or "8,11,15,19").split(",")]
+        return [8, 20]
+    return [int(h) for h in (user.get("reminder_hours") or "8,20").split(",")]
 
 
 def set_user_reminder_hours(phone: str, hours: list[int]) -> None:
