@@ -137,15 +137,15 @@ LANDING_HTML = """
                     <div class="ins"><div class="n ok">4</div><span><b>Copy</b> the URL and paste it below</span></div>
                 </div>
 
-                <details style="margin-bottom:14px;cursor:pointer">
-                    <summary style="color:#4a5f80;font-size:12px">Other calendars (Google, Outlook, Notion...)</summary>
-                    <div style="margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.8">
+                <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px;margin-bottom:14px">
+                    <p style="color:#60a5fa;font-weight:600;font-size:13px;margin-bottom:10px">🌐 Other Calendars</p>
+                    <div style="font-size:12px;color:#94a3b8;line-height:2">
                         <b>Google Calendar:</b> Settings &rarr; your calendar &rarr; Secret address in iCal format<br>
                         <b>Outlook:</b> Calendar &rarr; Share &rarr; Get a link (ICS)<br>
                         <b>Notion:</b> Database &rarr; ... &rarr; Export as iCal<br>
                         <b>Any Canvas:</b> Calendar &rarr; Calendar Feed (bottom right)
                     </div>
-                </details>
+                </div>
                 <div class="f">
                     <label>Calendar Feed URL</label>
                     <input type="url" id="ical_url" placeholder="https://example.com/calendar.ics" style="font-size:11px">
