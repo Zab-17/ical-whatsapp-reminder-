@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import httpx
 from icalendar import Calendar
 
-from src.models import AssignmentInfo
+from src.models import AssignmentInfo, CAIRO_TZ
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +50,15 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 7) -> list[AssignmentInf
             continue
 
         due_at = dtstart.dt
+        is_date_only = not isinstance(due_at, datetime)
         # icalendar may return date (not datetime) — convert to datetime
-        if not isinstance(due_at, datetime):
-            due_at = datetime.combine(due_at, datetime.min.time(), tzinfo=timezone.utc)
-        if due_at.tzinfo is None:
+        if is_date_only:
+            # Date-only event (e.g., Canvas assignments) — set to 11:59 PM Cairo
+            due_at = datetime.combine(due_at, datetime.min.time(), tzinfo=CAIRO_TZ)
+            due_at = due_at.replace(hour=23, minute=59)
+        elif due_at.tzinfo is not None:
+            due_at = due_at.astimezone(timezone.utc)
+        else:
             due_at = due_at.replace(tzinfo=timezone.utc)
 
         if not (now <= due_at <= cutoff):
@@ -69,6 +74,7 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 7) -> list[AssignmentInf
             course_name=source_name or location or "",
             course_id=0,
             submitted=False,
+            date_only=is_date_only,
         ))
 
     items.sort(key=lambda a: a.due_at or datetime.max.replace(tzinfo=timezone.utc))

@@ -25,11 +25,14 @@ class AssignmentInfo:
     course_id: int
     points: float | None = None
     submitted: bool = False
+    date_only: bool = False
 
     def due_str(self) -> str:
         if self.due_at is None:
             return "No due date"
         cairo = self.due_at.astimezone(CAIRO_TZ)
+        if self.date_only:
+            return cairo.strftime("%b %d")
         return cairo.strftime("%b %d, %I:%M %p")
 
 

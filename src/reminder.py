@@ -93,9 +93,14 @@ def send_reminder_for_user(phone: str, name: str = "") -> None:
             if date_str != current_date:
                 current_date = date_str
                 lines.append(f"\n📅 *{date_str}*")
-            time_str = cairo.strftime("%I:%M %p") if cairo else ""
+            time_str = "" if a.date_only else (cairo.strftime("%I:%M %p") if cairo else "")
             lines.append(f"  {i}. {a.name}")
-            lines.append(f"    📖 {a.course_name} — {time_str}")
+            if a.course_name and time_str:
+                lines.append(f"    📖 {a.course_name} — {time_str}")
+            elif a.course_name:
+                lines.append(f"    📖 {a.course_name}")
+            elif time_str:
+                lines.append(f"    🕐 {time_str}")
         lines.append(f"\n📊 Total: {len(items)} upcoming items")
         lines.append('\n_Reply "done 1" to mark an item as submitted_')
         body = "\n".join(lines)

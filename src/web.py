@@ -672,9 +672,13 @@ async def register_ical(request: Request):
             lines.append("📅 *Your upcoming deadlines:*\n")
             for i, a in enumerate(items, 1):
                 cairo = a.due_at.astimezone(CAIRO) if a.due_at else None
-                date_str = cairo.strftime("%b %d, %I:%M %p") if cairo else "No date"
+                if a.date_only:
+                    date_str = cairo.strftime("%b %d") if cairo else "No date"
+                else:
+                    date_str = cairo.strftime("%b %d, %I:%M %p") if cairo else "No date"
                 lines.append(f"  {i}. {a.name}")
-                lines.append(f"    📖 {a.course_name} — {date_str}")
+                source = f"📖 {a.course_name} — " if a.course_name else ""
+                lines.append(f"    {source}{date_str}")
             lines.append("")
         else:
             lines.append("No upcoming assignments right now!\n")

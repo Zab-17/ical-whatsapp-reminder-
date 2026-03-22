@@ -231,9 +231,10 @@ def handle_upcoming(phone: str) -> dict:
         if date_str != current_date:
             current_date = date_str
             lines.append(f"\n*{date_str}*")
-        time_str = cairo.strftime("%I:%M %p") if cairo else ""
+        time_str = "" if a.date_only else (cairo.strftime("%I:%M %p") if cairo else "")
         source = f" ({a.course_name})" if a.course_name else ""
-        lines.append(f"  {i}. {a.name}{source} — {time_str}")
+        time_part = f" — {time_str}" if time_str else ""
+        lines.append(f"  {i}. {a.name}{source}{time_part}")
     lines.append(f'\n_Reply "done 1" to mark as submitted_')
 
     return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}
