@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     database_path: str = "canvas_reminder.db"
 
     # Settings
-    upcoming_days: int = 7
+    upcoming_days: int = 10
 
 
 settings = Settings()

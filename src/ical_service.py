@@ -30,7 +30,7 @@ def is_valid_ical_url(url: str) -> bool:
     return False
 
 
-def fetch_upcoming_from_ical(ical_url: str, days: int = 7) -> list[AssignmentInfo]:
+def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentInfo]:
     """Fetch iCal feed and return upcoming events within the given window."""
     resp = httpx.get(ical_url.strip(), timeout=30, follow_redirects=True)
     resp.raise_for_status()
@@ -81,7 +81,7 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 7) -> list[AssignmentInf
     return items
 
 
-def fetch_all_from_feeds(feeds: list[dict], days: int = 7) -> list[AssignmentInfo]:
+def fetch_all_from_feeds(feeds: list[dict], days: int = 10) -> list[AssignmentInfo]:
     """Fetch and merge upcoming items from multiple feeds."""
     all_items = []
     for feed in feeds:
