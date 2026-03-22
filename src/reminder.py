@@ -27,8 +27,11 @@ def _item_key(a: AssignmentInfo) -> str:
 def _save_last_reminder_items(phone: str, items: list[AssignmentInfo]) -> None:
     """Store the numbered item list so 'done N' can reference it."""
     data = [{"name": a.name, "course_name": a.course_name, "key": _item_key(a)} for a in items]
+    user = get_user(phone)
+    snapshot = json.loads(user.get("snapshot") or "{}") if user else {}
+    snapshot["last_reminder"] = data
     with _conn() as conn:
-        conn.execute("UPDATE users SET snapshot = ? WHERE phone = ?", (json.dumps({"last_reminder": data}), phone))
+        conn.execute("UPDATE users SET snapshot = ? WHERE phone = ?", (json.dumps(snapshot), phone))
 
 
 def get_last_reminder_items(phone: str) -> list[dict]:

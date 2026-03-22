@@ -1,12 +1,14 @@
-"""Change detector — checks all users for new Canvas content."""
+"""Change detector — checks all users for new calendar events."""
 from __future__ import annotations
 
 import json
 import logging
 import sys
+from datetime import timezone, timedelta
 
-from src import canvas_service, whatsapp_service
-from src.database import get_active_users, get_user_snapshot, save_user_snapshot
+from src import canvas_service, ical_service, whatsapp_service
+from src.database import get_active_users, get_user_snapshot, save_user_snapshot, get_user_feeds
+from src.models import CAIRO_TZ
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -23,6 +25,52 @@ def detect_all_changes() -> None:
 
 
 def detect_changes_for_user(phone: str) -> None:
+    feeds = get_user_feeds(phone)
+
+    if feeds:
+        _detect_ical_changes(phone, feeds)
+    else:
+        _detect_canvas_changes(phone)
+
+
+def _detect_ical_changes(phone: str, feeds: list[dict]) -> None:
+    """Detect new events in iCal feeds by comparing event keys."""
+    snapshot = get_user_snapshot(phone)
+    known_events = set(snapshot.get("ical_event_keys", []))
+
+    try:
+        items = ical_service.fetch_all_from_feeds(feeds, days=14)
+    except Exception as e:
+        logger.warning("Failed to fetch feeds for %s: %s", phone, e)
+        return
+
+    current_keys = set()
+    new_items = []
+
+    for item in items:
+        key = f"{item.name}|{item.due_at.isoformat() if item.due_at else ''}"
+        current_keys.add(key)
+        if key not in known_events and known_events:
+            cairo = item.due_at.astimezone(CAIRO_TZ) if item.due_at else None
+            date_str = cairo.strftime("%b %d, %I:%M %p") if cairo else "No date"
+            source = f" — {item.course_name}" if item.course_name else ""
+            new_items.append(f"📝 *{item.name}*{source}\n   Due: {date_str}")
+
+    # Merge into snapshot (preserve other keys like last_reminder)
+    snapshot["ical_event_keys"] = list(current_keys)
+    save_user_snapshot(phone, snapshot)
+
+    if new_items:
+        header = f"🔔 *{len(new_items)} new event(s) detected!*\n"
+        body = header + "\n\n".join(new_items[:10])  # cap at 10 to avoid huge messages
+        whatsapp_service.send_text(body, to=phone)
+        logger.info("Sent %d new items to %s", len(new_items), phone)
+    else:
+        logger.info("No new items for %s", phone)
+
+
+def _detect_canvas_changes(phone: str) -> None:
+    """Legacy Canvas cookie-based detection."""
     snapshot = get_user_snapshot(phone)
     known_assignments = set(snapshot.get("assignment_ids", []))
     known_quizzes = set(snapshot.get("quiz_ids", []))
@@ -70,12 +118,10 @@ def detect_changes_for_user(phone: str) -> None:
         except Exception:
             pass
 
-    # Save updated snapshot
-    save_user_snapshot(phone, {
-        "assignment_ids": all_assignment_ids,
-        "quiz_ids": all_quiz_ids,
-        "announcement_ids": all_announcement_ids,
-    })
+    snapshot["assignment_ids"] = all_assignment_ids
+    snapshot["quiz_ids"] = all_quiz_ids
+    snapshot["announcement_ids"] = all_announcement_ids
+    save_user_snapshot(phone, snapshot)
 
     if new_items:
         header = f"🔔 *{len(new_items)} new item(s) detected!*\n"
