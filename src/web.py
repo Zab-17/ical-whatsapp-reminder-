@@ -646,6 +646,11 @@ async def register_ical(request: Request):
 
     logger.info("User %s (%s) registered via iCal web form", phone, name)
 
+    # Save items for "done N" reference
+    if items:
+        from src.reminder import _save_last_reminder_items
+        _save_last_reminder_items(phone, items)
+
     # Send welcome message
     try:
         from src import whatsapp_service
