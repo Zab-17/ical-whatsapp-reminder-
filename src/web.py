@@ -7,6 +7,7 @@ import threading
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
+from src.config import settings
 
 from src.database import add_user
 
@@ -752,7 +753,7 @@ async def register_cookies(request: Request):
 
 # ─── Admin Routes ───────────────────────────────────────────
 
-ADMIN_KEY = "oowBQo5gl8m48uZ86wK4GxwkU_EpLPIQwl_gikBcC5E"
+ADMIN_KEY = settings.admin_key
 
 
 @router.get("/admin/{key}")

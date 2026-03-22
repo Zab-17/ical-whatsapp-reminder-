@@ -56,7 +56,7 @@ def add_user(phone: str, cookies: list[dict], name: str = "") -> None:
     now = datetime.now(timezone.utc).isoformat()
     with _conn() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO users (phone, name, cookies, created_at, last_login) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO users (phone, name, cookies, created_at, last_login, reminder_hours) VALUES (?, ?, ?, ?, ?, '8,20')",
             (phone, name, json.dumps(cookies), now, now),
         )
     logger.info("User %s registered", phone)

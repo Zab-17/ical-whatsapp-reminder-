@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Database
     database_path: str = "canvas_reminder.db"
 
+    # Admin
+    admin_key: str = ""
+
     # Settings
     upcoming_days: int = 10
 
