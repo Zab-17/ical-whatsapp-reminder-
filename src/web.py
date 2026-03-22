@@ -164,7 +164,7 @@ LANDING_HTML = """
                 <div class="sec"><span style="font-size:13px;flex-shrink:0">💡</span><p>Reply <b>"done 1"</b> to a reminder to mark an item as done. Send more iCal URLs on WhatsApp to add more feeds!</p></div>
             </div>
         </div>
-        <div class="foot">Never miss a deadline</div>
+        <div class="foot"><a href="https://github.com/Zab-17/ical-whatsapp-reminder-" style="color:var(--dim);text-decoration:none">Open Source on GitHub ⭐</a></div>
     </div>
 
     <!-- Animated background: aurora blobs + floating motes -->
