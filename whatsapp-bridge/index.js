@@ -16,6 +16,8 @@ const logger = pino({ level: 'warn' });
 let sock = null;
 let qrCode = null;
 let isConnected = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY = 60000; // cap at 60s
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -30,7 +32,9 @@ async function connectToWhatsApp() {
         },
         logger,
         syncFullHistory: false,
-        markOnlineOnConnect: false,
+        markOnlineOnConnect: true,
+        keepAliveIntervalMs: 30000, // ping WhatsApp every 30s to stay alive
+        retryRequestDelayMs: 2000,
     });
 
     sock.ev.on('connection.update', (update) => {
@@ -48,14 +52,19 @@ async function connectToWhatsApp() {
             console.log('Connection closed. Status:', statusCode, '| Reconnecting:', shouldReconnect);
 
             if (shouldReconnect) {
-                console.log('Reconnecting in 5s...');
-                setTimeout(connectToWhatsApp, 5000);
+                reconnectAttempts++;
+                // Exponential backoff: 5s, 10s, 20s, 40s, capped at 60s
+                const delay = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY);
+                console.log(`Reconnecting in ${delay / 1000}s (attempt ${reconnectAttempts})...`);
+                setTimeout(connectToWhatsApp, delay);
             } else {
                 console.log('Logged out. Scan QR code again.');
+                reconnectAttempts = 0;
                 qrCode = null;
             }
         } else if (connection === 'open') {
             isConnected = true;
+            reconnectAttempts = 0;
             qrCode = null;
             console.log('WhatsApp connected!');
         }
