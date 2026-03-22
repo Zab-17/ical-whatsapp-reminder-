@@ -67,10 +67,11 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 7) -> list[AssignmentInf
 
 def _extract_course_name(summary: str, description: str) -> str:
     """Extract course name from iCal event summary or description."""
-    # Canvas format: "Assignment Name [Course Code]"
-    match = re.search(r"\[(.+?)\]\s*$", summary)
+    # Canvas format: "Assignment Name [Full Course Name]"
+    # Use greedy match to capture full name including parentheses
+    match = re.search(r"\[(.+)\]\s*$", summary)
     if match:
-        return match.group(1)
+        return match.group(1).lstrip(".")
     # Fallback: check description for course info
     match = re.search(r"Course:\s*(.+)", description)
     if match:
