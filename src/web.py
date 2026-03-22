@@ -101,9 +101,9 @@ LANDING_HTML = """
     <div class="wrap">
         <div class="card">
             <div class="hdr">
-                <div class="badge">AUC Canvas</div>
-                <h1>Never miss<br>an <em>assignment</em></h1>
-                <p class="sub">WhatsApp reminders for your deadlines</p>
+                <div class="badge">iCal Reminders</div>
+                <h1>Never miss<br>a <em>deadline</em></h1>
+                <p class="sub">WhatsApp reminders from any calendar</p>
             </div>
             <div class="line"></div>
 
@@ -118,27 +118,34 @@ LANDING_HTML = """
                 <button class="btn" onclick="goToStep2()">Get Started <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg></button>
                 <div class="feats">
                     <div class="ft"><span class="i">📅</span><span>2x daily reminders</span></div>
-                    <div class="ft"><span class="i">🔔</span><span>New upload alerts</span></div>
-                    <div class="ft"><span class="i">📖</span><span>Browse courses</span></div>
+                    <div class="ft"><span class="i">🔗</span><span>Multiple calendar feeds</span></div>
+                    <div class="ft"><span class="i">✅</span><span>Mark tasks as done</span></div>
                     <div class="ft"><span class="i">💬</span><span>WhatsApp chatbot</span></div>
                 </div>
             </div>
 
             <div id="step2" class="step">
-                <div class="s2t">Connect <em>Canvas</em></div>
-                <p style="color:#94a3b8;font-size:13px;margin-bottom:16px">One-time setup — works forever, no re-login needed!</p>
-                <div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.25);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#eab308">⚠️ Use a <b>browser</b> (Safari, Chrome) — the Canvas app doesn't have this option.</div>
-                <div class="ins"><div class="n">1</div><span>Go to <b>aucegypt.instructure.com</b> in your browser</span></div>
-                <div class="ins"><div class="n">2</div><span>Click <b>Calendar</b> in the left sidebar</span></div>
-                <div class="ins"><div class="n">3</div><span>Click <b>Calendar Feed</b> (small link, bottom right)</span></div>
-                <div class="ins"><div class="n ok">4</div><span><b>Copy</b> the URL and paste it below</span></div>
-                <div class="f" style="margin-top:16px">
+                <div class="s2t">Add a <em>Calendar Feed</em></div>
+                <p style="color:#94a3b8;font-size:13px;margin-bottom:16px">One-time setup — works forever. Supports Canvas, Google Calendar, Outlook, Notion, and more.</p>
+                <div class="ins"><div class="n">1</div><span>Open your calendar app in a <b>browser</b></span></div>
+                <div class="ins"><div class="n">2</div><span>Find the <b>iCal / .ics export</b> option</span></div>
+                <div class="ins"><div class="n ok">3</div><span><b>Copy</b> the feed URL and paste it below</span></div>
+                <details style="margin-bottom:14px;cursor:pointer">
+                    <summary style="color:#4a5f80;font-size:12px">Where do I find this?</summary>
+                    <div style="margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.6">
+                        <b>Canvas:</b> Calendar &rarr; Calendar Feed (bottom right)<br>
+                        <b>Google Calendar:</b> Settings &rarr; Calendar &rarr; Secret address in iCal format<br>
+                        <b>Outlook:</b> Calendar &rarr; Share &rarr; Get a link (ICS)<br>
+                        <b>Notion:</b> Database &rarr; ... &rarr; Export as iCal
+                    </div>
+                </details>
+                <div class="f">
                     <label>Calendar Feed URL</label>
-                    <input type="url" id="ical_url" placeholder="https://aucegypt.instructure.com/feeds/calendars/user_..." style="font-size:11px">
+                    <input type="url" id="ical_url" placeholder="https://example.com/calendar.ics" style="font-size:11px">
                     <div class="pe" id="icalError"></div>
                 </div>
-                <button class="btn" id="registerBtn" onclick="registerWithIcal()">Connect Canvas <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></button>
-                <div class="sec"><span style="font-size:13px;flex-shrink:0">🔒</span><p>The Calendar Feed is a read-only link to your assignments. We never see your password or login credentials.</p></div>
+                <button class="btn" id="registerBtn" onclick="registerWithIcal()">Connect Feed <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></button>
+                <div class="sec"><span style="font-size:13px;flex-shrink:0">🔒</span><p>We only read event names and dates. We never see your password or login credentials.</p></div>
             </div>
 
             <div id="step3" class="step">
@@ -147,15 +154,10 @@ LANDING_HTML = """
                     <div class="s2t">You're <em>all set!</em></div>
                     <p style="color:#94a3b8;font-size:13px;margin-top:8px" id="successMsg"></p>
                 </div>
-                <div class="sec"><span style="font-size:13px;flex-shrink:0">💡</span><p>Reply <b>"done 1"</b> to a reminder to mark an item as submitted. We'll stop reminding you about it.</p></div>
-                <div style="margin-top:20px;background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.3);border-radius:12px;padding:16px">
-                    <p style="color:#f87171;font-weight:600;font-size:14px;margin-bottom:6px">Want full Canvas access?</p>
-                    <p style="color:#94a3b8;font-size:12px;margin-bottom:12px">Browse courses, assignments with submission status, quizzes, and modules directly from WhatsApp.</p>
-                    <a href="/extension" class="btn" style="text-decoration:none;font-size:12px;padding:10px 18px;background:linear-gradient(135deg,#c41230,#a00e28)">Download Chrome Extension</a>
-                </div>
+                <div class="sec"><span style="font-size:13px;flex-shrink:0">💡</span><p>Reply <b>"done 1"</b> to a reminder to mark an item as done. Send more iCal URLs on WhatsApp to add more feeds!</p></div>
             </div>
         </div>
-        <div class="foot">Built for AUC students</div>
+        <div class="foot">Never miss a deadline</div>
     </div>
 
     <!-- Animated background: aurora blobs + floating motes -->
@@ -608,7 +610,7 @@ async def capture_session(request: Request):
 
 @router.post("/api/register-ical")
 async def register_ical(request: Request):
-    """Register a user with their Canvas iCal feed URL."""
+    """Register a user with their iCal feed URL."""
     body = await request.json()
     phone = body.get("phone", "").replace(" ", "").replace("+", "").strip()
     name = body.get("name", "").strip()
@@ -763,7 +765,9 @@ async def admin_dashboard(key: str):
         has_ical = bool(u.get("ical_url"))
         if has_ical:
             ical_count += 1
-            auth_badge = '🟣 iCal'
+            from src.database import get_user_feeds as _get_feeds
+            feed_count = len(_get_feeds(u["phone"]))
+            auth_badge = f'🟣 {feed_count} feed{"s" if feed_count != 1 else ""}'
         else:
             cookies_ok = check_cookies_valid(u["phone"])
             if cookies_ok:
@@ -785,7 +789,7 @@ async def admin_dashboard(key: str):
     <!DOCTYPE html>
     <html><head>
         <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Admin — Canvas Reminder</title>
+        <title>Admin — Reminder Bot</title>
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
         <style>
             * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -805,7 +809,7 @@ async def admin_dashboard(key: str):
         </style>
     </head><body>
         <div class="container">
-            <h1>Canvas Reminder Admin</h1>
+            <h1>Reminder Bot Admin</h1>
             <p class="sub">{len(users)} registered users</p>
             <div class="stat-row">
                 <div class="stat">
@@ -818,7 +822,7 @@ async def admin_dashboard(key: str):
                 </div>
                 <div class="stat">
                     <div class="num">{ical_count}</div>
-                    <div class="label">iCal Feed</div>
+                    <div class="label">With Feeds</div>
                 </div>
                 <div class="stat">
                     <div class="num">{valid_count}</div>

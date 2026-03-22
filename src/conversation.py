@@ -6,15 +6,15 @@ from datetime import timezone, timedelta
 
 from src import canvas_service, ical_service
 from src.models import AssignmentInfo
-from src.database import get_user_ical_url
+from src.database import get_user_feeds
 
 CAIRO_TZ = timezone(timedelta(hours=2))
 
 logger = logging.getLogger(__name__)
 
 MAIN_MENU_BUTTONS = [
-    {"id": "upcoming", "title": "Upcoming Due Dates"},
-    {"id": "list_courses", "title": "My Courses"},
+    {"id": "upcoming", "title": "Upcoming Events"},
+    {"id": "feeds", "title": "My Feeds"},
     {"id": "settings", "title": "Settings"},
 ]
 
@@ -41,6 +41,10 @@ def route(user_input: str, phone: str) -> dict:
         return handle_undone(phone)
     if user_input.startswith("restore "):
         return handle_restore(phone, user_input)
+    if user_input == "feeds" or user_input == "my feeds":
+        return handle_list_feeds(phone)
+    if user_input.startswith("remove feed "):
+        return handle_remove_feed(phone, user_input)
     if user_input.startswith("settime_"):
         return handle_set_time(phone, user_input)
     if user_input.startswith("course_"):
@@ -72,26 +76,58 @@ def route(user_input: str, phone: str) -> dict:
 
 
 def handle_ical_registration(phone: str, url: str) -> dict:
-    from src.database import set_user_ical_url
+    from src.database import add_user_feed
     # Verify the URL works before saving
     try:
         items = ical_service.fetch_upcoming_from_ical(url)
     except Exception as e:
         logger.error("Invalid iCal URL for %s: %s", phone, e)
         return {
-            "body": "❌ That URL didn't work. Make sure you copied the full Calendar Feed URL from Canvas.\n\n"
-                    "Go to Canvas → Calendar → Calendar Feed (bottom right) → copy the link.",
+            "body": "❌ That URL didn't work. Make sure you copied a valid iCal (.ics) feed URL.",
             "buttons": MAIN_MENU_BUTTONS,
         }
 
-    set_user_ical_url(phone, url.strip())
+    added = add_user_feed(phone, url.strip())
     count = len(items)
+    feeds = get_user_feeds(phone)
+    if not added:
+        return {"body": "ℹ️ This feed is already connected!", "buttons": MAIN_MENU_BUTTONS}
     return {
-        "body": f"✅ *Calendar feed connected!*\n\n"
-                f"Found {count} upcoming items. Your reminders will now use this feed — no more expired sessions!\n\n"
-                f"You can still browse courses and assignments if your cookies are active.",
+        "body": f"✅ *Feed connected!* ({len(feeds)} total)\n\n"
+                f"Found {count} upcoming events. Send *feeds* to manage your feeds.",
         "buttons": MAIN_MENU_BUTTONS,
     }
+
+
+def handle_list_feeds(phone: str) -> dict:
+    feeds = get_user_feeds(phone)
+    if not feeds:
+        return {"body": "No feeds connected yet.\n\nSend an iCal (.ics) URL to add one.", "buttons": MAIN_MENU_BUTTONS}
+
+    lines = ["📡 *Your Feeds:*\n"]
+    for i, feed in enumerate(feeds, 1):
+        label = feed.get("label", f"Feed {i}")
+        url_short = feed["url"][:50] + "..." if len(feed["url"]) > 50 else feed["url"]
+        lines.append(f"  {i}. *{label}*")
+        lines.append(f"    {url_short}")
+    lines.append(f"\nSend an iCal URL to add another feed.")
+    lines.append('Send *"remove feed 1"* to remove a feed.')
+    return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}
+
+
+def handle_remove_feed(phone: str, user_input: str) -> dict:
+    from src.database import remove_user_feed
+    parts = user_input.strip().split()
+    if len(parts) != 3 or not parts[2].isdigit():
+        return {"body": '💡 Usage: *remove feed 1*', "buttons": MAIN_MENU_BUTTONS}
+
+    idx = int(parts[2])
+    removed = remove_user_feed(phone, idx)
+    if not removed:
+        feeds = get_user_feeds(phone)
+        return {"body": f"❌ Invalid number. Choose between 1 and {len(feeds)}.", "buttons": MAIN_MENU_BUTTONS}
+
+    return {"body": f"✅ *{removed['label']}* removed!", "buttons": MAIN_MENU_BUTTONS}
 
 
 def handle_done(phone: str, user_input: str) -> dict:
@@ -158,7 +194,7 @@ def handle_restore(phone: str, user_input: str) -> dict:
 
 def handle_main_menu() -> dict:
     return {
-        "body": "📚 *University Assignment Reminder*\n\nWhat would you like to check?",
+        "body": "📅 *Reminder Bot*\n\nWhat would you like to check?",
         "buttons": MAIN_MENU_BUTTONS,
     }
 
@@ -167,10 +203,10 @@ def handle_upcoming(phone: str) -> dict:
     from src.database import get_dismissed_items
     from src.reminder import _item_key, _save_last_reminder_items
 
-    ical_url = get_user_ical_url(phone)
+    feeds = get_user_feeds(phone)
     try:
-        if ical_url:
-            items = ical_service.fetch_upcoming_from_ical(ical_url)
+        if feeds:
+            items = ical_service.fetch_all_from_feeds(feeds)
         else:
             items = canvas_service.get_upcoming_items(phone)
     except Exception as e:
@@ -182,12 +218,12 @@ def handle_upcoming(phone: str) -> dict:
     items = [a for a in items if _item_key(a) not in dismissed]
 
     if not items:
-        return {"body": "✅ No upcoming assignments in the next 7 days!", "buttons": MAIN_MENU_BUTTONS}
+        return {"body": "✅ No upcoming events in the next 7 days!", "buttons": MAIN_MENU_BUTTONS}
 
     # Save for "done N" reference
     _save_last_reminder_items(phone, items)
 
-    lines = ["📅 *Upcoming Due Dates*\n"]
+    lines = ["📅 *Upcoming Events*\n"]
     current_date = None
     for i, a in enumerate(items, 1):
         cairo = a.due_at.astimezone(CAIRO_TZ) if a.due_at else None
@@ -196,7 +232,8 @@ def handle_upcoming(phone: str) -> dict:
             current_date = date_str
             lines.append(f"\n*{date_str}*")
         time_str = cairo.strftime("%I:%M %p") if cairo else ""
-        lines.append(f"  {i}. {a.name} ({a.course_name}) — {time_str}")
+        source = f" ({a.course_name})" if a.course_name else ""
+        lines.append(f"  {i}. {a.name}{source} — {time_str}")
     lines.append(f'\n_Reply "done 1" to mark as submitted_')
 
     return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}

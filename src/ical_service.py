@@ -1,9 +1,10 @@
-"""Fetch and parse Canvas iCal calendar feeds for assignment due dates."""
+"""Fetch and parse iCal calendar feeds for upcoming events/tasks."""
 from __future__ import annotations
 
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 import httpx
 from icalendar import Calendar
@@ -12,16 +13,26 @@ from src.models import AssignmentInfo
 
 logger = logging.getLogger(__name__)
 
-CANVAS_FEED_PATTERN = re.compile(r"https?://[^/]+/feeds/calendars/user_\w+\.ics")
-
 
 def is_valid_ical_url(url: str) -> bool:
-    return bool(CANVAS_FEED_PATTERN.match(url.strip()))
+    """Accept any URL that looks like an iCal feed."""
+    url = url.strip()
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    # Accept .ics extension or known calendar feed paths
+    if parsed.path.endswith(".ics"):
+        return True
+    if "/feeds/calendars/" in parsed.path:
+        return True
+    if "calendar" in parsed.path.lower() and ("ical" in url.lower() or "ics" in url.lower()):
+        return True
+    return False
 
 
 def fetch_upcoming_from_ical(ical_url: str, days: int = 7) -> list[AssignmentInfo]:
-    """Fetch iCal feed and return upcoming assignments within the given window."""
-    resp = httpx.get(ical_url.strip(), timeout=30)
+    """Fetch iCal feed and return upcoming events within the given window."""
+    resp = httpx.get(ical_url.strip(), timeout=30, follow_redirects=True)
     resp.raise_for_status()
 
     cal = Calendar.from_ical(resp.text)
@@ -48,38 +59,70 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 7) -> list[AssignmentInf
         if not (now <= due_at <= cutoff):
             continue
 
-        # Canvas iCal format: "Assignment Name [Course Name]" or "Course Name - Assignment Name"
-        course_name = _extract_course_name(summary, str(component.get("DESCRIPTION", "")))
-        assignment_name = _extract_assignment_name(summary)
+        event_name, source_name = _parse_summary(summary, str(component.get("DESCRIPTION", "")))
+        location = str(component.get("LOCATION", "")) if component.get("LOCATION") else ""
 
         items.append(AssignmentInfo(
-            id=hash(summary) & 0x7FFFFFFF,  # stable pseudo-ID from name
-            name=assignment_name,
+            id=hash(summary) & 0x7FFFFFFF,
+            name=event_name,
             due_at=due_at,
-            course_name=course_name,
+            course_name=source_name or location or "",
             course_id=0,
-            submitted=False,  # iCal doesn't have submission status
+            submitted=False,
         ))
 
     items.sort(key=lambda a: a.due_at or datetime.max.replace(tzinfo=timezone.utc))
     return items
 
 
-def _extract_course_name(summary: str, description: str) -> str:
-    """Extract course name from iCal event summary or description."""
-    # Canvas format: "Assignment Name [Full Course Name]"
-    # Use greedy match to capture full name including parentheses
+def fetch_all_from_feeds(feeds: list[dict], days: int = 7) -> list[AssignmentInfo]:
+    """Fetch and merge upcoming items from multiple feeds."""
+    all_items = []
+    for feed in feeds:
+        url = feed.get("url", "")
+        label = feed.get("label", "")
+        try:
+            items = fetch_upcoming_from_ical(url, days)
+            # Tag items with feed label if they have no source
+            for item in items:
+                if not item.course_name and label:
+                    item.course_name = label
+            all_items.extend(items)
+        except Exception as e:
+            logger.warning("Failed to fetch feed '%s' (%s): %s", label, url[:50], e)
+
+    # Sort and deduplicate by name+date
+    all_items.sort(key=lambda a: a.due_at or datetime.max.replace(tzinfo=timezone.utc))
+    seen = set()
+    deduped = []
+    for item in all_items:
+        key = f"{item.name}|{item.due_at}"
+        if key not in seen:
+            seen.add(key)
+            deduped.append(item)
+    return deduped
+
+
+def _parse_summary(summary: str, description: str) -> tuple[str, str]:
+    """Parse event summary into (event_name, source_name).
+
+    Handles multiple formats:
+    - Canvas: "Assignment Name [Course Name]"
+    - Generic: "Event Name" (no source)
+    - Google Calendar: just the event title
+    """
+    # Canvas format: "Assignment Name [Course Name]"
     match = re.search(r"\[(.+)\]\s*$", summary)
     if match:
-        return match.group(1).lstrip(".")
-    # Fallback: check description for course info
-    match = re.search(r"Course:\s*(.+)", description)
-    if match:
-        return match.group(1).strip()
-    return "Unknown Course"
+        source = match.group(1).lstrip(".")
+        name = re.sub(r"\s*\[.+\]\s*$", "", summary).strip()
+        return name, source
 
+    # Check description for course/source info
+    for pattern in [r"Course:\s*(.+)", r"Calendar:\s*(.+)", r"Source:\s*(.+)"]:
+        match = re.search(pattern, description)
+        if match:
+            return summary.strip(), match.group(1).strip()
 
-def _extract_assignment_name(summary: str) -> str:
-    """Strip course tag from summary to get clean assignment name."""
-    # Remove trailing "[Course Code]"
-    return re.sub(r"\s*\[.+?\]\s*$", "", summary).strip()
+    # Generic: just use summary as-is
+    return summary.strip(), ""

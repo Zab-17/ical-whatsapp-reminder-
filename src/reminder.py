@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from src import canvas_service, ical_service, whatsapp_service
 from src.conversation import MAIN_MENU_BUTTONS
 from src.database import (
-    get_active_users, get_user_reminder_hours, get_user_ical_url,
+    get_active_users, get_user_reminder_hours, get_user_feeds,
     get_dismissed_items, get_user, _conn,
 )
 from src.models import AssignmentInfo
@@ -56,16 +56,16 @@ def send_all_reminders() -> None:
 
 
 def send_reminder_for_user(phone: str, name: str = "") -> None:
-    ical_url = get_user_ical_url(phone)
+    feeds = get_user_feeds(phone)
     try:
-        if ical_url:
-            items = ical_service.fetch_upcoming_from_ical(ical_url)
+        if feeds:
+            items = ical_service.fetch_all_from_feeds(feeds)
         else:
             items = [a for a in canvas_service.get_upcoming_items(phone) if not a.submitted]
     except Exception as e:
         logger.error("Failed to fetch items for %s: %s", phone, e)
-        if ical_url:
-            whatsapp_service.send_text("❌ Failed to fetch your calendar feed. The URL may be invalid.", to=phone)
+        if feeds:
+            whatsapp_service.send_text("❌ Failed to fetch your calendar feeds.", to=phone)
         else:
             whatsapp_service.send_text("❌ Your Canvas session may have expired. Please re-login.", to=phone)
         return
@@ -76,13 +76,13 @@ def send_reminder_for_user(phone: str, name: str = "") -> None:
 
     greeting = f"Hey {name}! " if name else ""
     if not items:
-        body = f"☀️ *{greeting}No upcoming assignments in the next 7 days!*"
+        body = f"☀️ *{greeting}No upcoming events in the next 7 days!*"
         whatsapp_service.send_button_message(body, MAIN_MENU_BUTTONS, to=phone)
     else:
         # Save numbered list for "done N" lookups
         _save_last_reminder_items(phone, items)
 
-        lines = [f"☀️ *{greeting}Assignment Reminder:*\n"]
+        lines = [f"☀️ *{greeting}Upcoming Reminder:*\n"]
         current_date = None
         for i, a in enumerate(items, 1):
             cairo = a.due_at.astimezone(timezone(timedelta(hours=2))) if a.due_at else None

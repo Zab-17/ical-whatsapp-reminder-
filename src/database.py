@@ -139,16 +139,77 @@ def get_user_reminder_hours(phone: str) -> list[int]:
 
 
 def get_user_ical_url(phone: str) -> str:
-    user = get_user(phone)
-    if not user:
-        return ""
-    return user.get("ical_url") or ""
+    """Legacy single-URL getter — returns first feed URL or empty string."""
+    feeds = get_user_feeds(phone)
+    return feeds[0]["url"] if feeds else ""
 
 
 def set_user_ical_url(phone: str, url: str) -> None:
+    """Legacy single-URL setter — adds as first feed if not already present."""
+    add_user_feed(phone, url)
+
+
+def get_user_feeds(phone: str) -> list[dict]:
+    """Get all iCal feeds for a user. Returns list of {url, label} dicts."""
+    user = get_user(phone)
+    if not user:
+        return []
+    # Migrate from old ical_url string to new feeds format
+    raw = user.get("ical_url") or ""
+    if not raw:
+        return []
+    # New format: JSON array
+    if raw.startswith("["):
+        return json.loads(raw)
+    # Old format: single URL string — migrate on read
+    return [{"url": raw, "label": "Canvas"}]
+
+
+def set_user_feeds(phone: str, feeds: list[dict]) -> None:
     with _conn() as conn:
-        conn.execute("UPDATE users SET ical_url = ? WHERE phone = ?", (url, phone))
-    logger.info("iCal URL set for %s", phone)
+        conn.execute("UPDATE users SET ical_url = ? WHERE phone = ?", (json.dumps(feeds), phone))
+
+
+def add_user_feed(phone: str, url: str, label: str = "") -> bool:
+    """Add a feed. Returns False if URL already exists."""
+    feeds = get_user_feeds(phone)
+    # Check for duplicate
+    if any(f["url"] == url for f in feeds):
+        return False
+    if not label:
+        label = _auto_label(url, len(feeds) + 1)
+    feeds.append({"url": url, "label": label})
+    set_user_feeds(phone, feeds)
+    logger.info("Feed added for %s: %s (%s)", phone, label, url[:50])
+    return True
+
+
+def remove_user_feed(phone: str, index: int) -> dict | None:
+    """Remove a feed by index (1-based). Returns removed feed or None."""
+    feeds = get_user_feeds(phone)
+    if index < 1 or index > len(feeds):
+        return None
+    removed = feeds.pop(index - 1)
+    set_user_feeds(phone, feeds)
+    logger.info("Feed removed for %s: %s", phone, removed.get("label"))
+    return removed
+
+
+def _auto_label(url: str, index: int) -> str:
+    """Generate a label from the URL."""
+    from urllib.parse import urlparse
+    host = urlparse(url).hostname or ""
+    if "instructure" in host or "canvas" in host:
+        return "Canvas"
+    if "google" in host:
+        return "Google Calendar"
+    if "outlook" in host or "office365" in host or "live.com" in host:
+        return "Outlook"
+    if "notion" in host:
+        return "Notion"
+    if "todoist" in host:
+        return "Todoist"
+    return f"Feed {index}"
 
 
 def get_dismissed_items(phone: str) -> set[str]:
