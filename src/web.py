@@ -127,16 +127,23 @@ LANDING_HTML = """
             <div id="step2" class="step">
                 <div class="s2t">Add a <em>Calendar Feed</em></div>
                 <p style="color:#94a3b8;font-size:13px;margin-bottom:16px">One-time setup — works forever. Supports Canvas, Google Calendar, Outlook, Notion, and more.</p>
-                <div class="ins"><div class="n">1</div><span>Open your calendar app in a <b>browser</b></span></div>
-                <div class="ins"><div class="n">2</div><span>Find the <b>iCal / .ics export</b> option</span></div>
-                <div class="ins"><div class="n ok">3</div><span><b>Copy</b> the feed URL and paste it below</span></div>
+
+                <div style="background:rgba(196,18,48,0.08);border:1px solid rgba(196,18,48,0.2);border-radius:10px;padding:14px;margin-bottom:16px">
+                    <p style="color:#f87171;font-weight:600;font-size:13px;margin-bottom:10px">🎓 AUC Students — Canvas</p>
+                    <div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.2);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#eab308">⚠️ Use a <b>browser</b> (Safari/Chrome) — the Canvas app doesn't have this</div>
+                    <div class="ins"><div class="n">1</div><span>Go to <b>aucegypt.instructure.com</b></span></div>
+                    <div class="ins"><div class="n">2</div><span>Click <b>Calendar</b> in the left sidebar</span></div>
+                    <div class="ins"><div class="n">3</div><span>Click <b>Calendar Feed</b> (small link, bottom right)</span></div>
+                    <div class="ins"><div class="n ok">4</div><span><b>Copy</b> the URL and paste it below</span></div>
+                </div>
+
                 <details style="margin-bottom:14px;cursor:pointer">
-                    <summary style="color:#4a5f80;font-size:12px">Where do I find this?</summary>
-                    <div style="margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.6">
-                        <b>Canvas:</b> Calendar &rarr; Calendar Feed (bottom right)<br>
-                        <b>Google Calendar:</b> Settings &rarr; Calendar &rarr; Secret address in iCal format<br>
+                    <summary style="color:#4a5f80;font-size:12px">Other calendars (Google, Outlook, Notion...)</summary>
+                    <div style="margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.8">
+                        <b>Google Calendar:</b> Settings &rarr; your calendar &rarr; Secret address in iCal format<br>
                         <b>Outlook:</b> Calendar &rarr; Share &rarr; Get a link (ICS)<br>
-                        <b>Notion:</b> Database &rarr; ... &rarr; Export as iCal
+                        <b>Notion:</b> Database &rarr; ... &rarr; Export as iCal<br>
+                        <b>Any Canvas:</b> Calendar &rarr; Calendar Feed (bottom right)
                     </div>
                 </details>
                 <div class="f">
