@@ -147,13 +147,11 @@ LANDING_HTML = """
                     <p style="color:#94a3b8;font-size:13px;margin-top:8px" id="successMsg"></p>
                 </div>
                 <div class="sec"><span style="font-size:13px;flex-shrink:0">💡</span><p>Reply <b>"done 1"</b> to a reminder to mark an item as submitted. We'll stop reminding you about it.</p></div>
-                <details style="margin-top:16px;cursor:pointer">
-                    <summary style="color:#4a5f80;font-size:12px;text-transform:uppercase;letter-spacing:1px">Want full Canvas access? Get the extension</summary>
-                    <div style="margin-top:12px">
-                        <p style="color:#94a3b8;font-size:12px;margin-bottom:12px">Browse courses, assignments with submission status, quizzes, and modules directly from WhatsApp. Requires re-login every 1-2 days.</p>
-                        <a href="/extension" class="btn" style="margin-bottom:12px;text-decoration:none;font-size:12px;padding:8px 16px">Download Extension</a>
-                    </div>
-                </details>
+                <div style="margin-top:20px;background:rgba(196,18,48,0.1);border:1px solid rgba(196,18,48,0.3);border-radius:12px;padding:16px">
+                    <p style="color:#f87171;font-weight:600;font-size:14px;margin-bottom:6px">Want full Canvas access?</p>
+                    <p style="color:#94a3b8;font-size:12px;margin-bottom:12px">Browse courses, assignments with submission status, quizzes, and modules directly from WhatsApp.</p>
+                    <a href="/extension" class="btn" style="text-decoration:none;font-size:12px;padding:10px 18px;background:linear-gradient(135deg,#c41230,#a00e28)">Download Chrome Extension</a>
+                </div>
             </div>
         </div>
         <div class="foot">Built for AUC students</div>
@@ -649,6 +647,7 @@ async def register_ical(request: Request):
 
     # Send welcome message
     try:
+        from src import whatsapp_service
         greeting = f"{name}, y" if name else "Y"
         whatsapp_service.send_text(
             f"✅ *{greeting}ou're all set!*\n\n"
