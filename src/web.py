@@ -127,7 +127,8 @@ LANDING_HTML = """
             <div id="step2" class="step">
                 <div class="s2t">Connect <em>Canvas</em></div>
                 <p style="color:#94a3b8;font-size:13px;margin-bottom:16px">One-time setup — works forever, no re-login needed!</p>
-                <div class="ins"><div class="n">1</div><span>Open <b>Canvas</b> in your browser (not the app)</span></div>
+                <div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.25);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#eab308">⚠️ Use a <b>browser</b> (Safari, Chrome) — the Canvas app doesn't have this option.</div>
+                <div class="ins"><div class="n">1</div><span>Go to <b>aucegypt.instructure.com</b> in your browser</span></div>
                 <div class="ins"><div class="n">2</div><span>Click <b>Calendar</b> in the left sidebar</span></div>
                 <div class="ins"><div class="n">3</div><span>Click <b>Calendar Feed</b> (small link, bottom right)</span></div>
                 <div class="ins"><div class="n ok">4</div><span><b>Copy</b> the URL and paste it below</span></div>
