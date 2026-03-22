@@ -37,6 +37,18 @@ def init_db() -> None:
     # Migrate existing users from old 4x/day schedule to new 2x/day default
     with _conn() as conn:
         conn.execute("UPDATE users SET reminder_hours = '8,20' WHERE reminder_hours = '8,11,15,19'")
+    # Add ical_url column if missing (migration for existing databases)
+    with _conn() as conn:
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN ical_url TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+    # Add dismissed_items column if missing
+    with _conn() as conn:
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN dismissed_items TEXT DEFAULT '[]'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     logger.info("Database initialized at %s", _db_path)
 
 
@@ -124,6 +136,46 @@ def get_user_reminder_hours(phone: str) -> list[int]:
     if not user:
         return [8, 20]
     return [int(h) for h in (user.get("reminder_hours") or "8,20").split(",")]
+
+
+def get_user_ical_url(phone: str) -> str:
+    user = get_user(phone)
+    if not user:
+        return ""
+    return user.get("ical_url") or ""
+
+
+def set_user_ical_url(phone: str, url: str) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE users SET ical_url = ? WHERE phone = ?", (url, phone))
+    logger.info("iCal URL set for %s", phone)
+
+
+def get_dismissed_items(phone: str) -> set[str]:
+    """Get set of dismissed assignment name hashes."""
+    user = get_user(phone)
+    if not user:
+        return set()
+    return set(json.loads(user.get("dismissed_items") or "[]"))
+
+
+def add_dismissed_item(phone: str, item_key: str) -> None:
+    items = get_dismissed_items(phone)
+    items.add(item_key)
+    with _conn() as conn:
+        conn.execute("UPDATE users SET dismissed_items = ? WHERE phone = ?", (json.dumps(list(items)), phone))
+
+
+def remove_dismissed_item(phone: str, item_key: str) -> None:
+    items = get_dismissed_items(phone)
+    items.discard(item_key)
+    with _conn() as conn:
+        conn.execute("UPDATE users SET dismissed_items = ? WHERE phone = ?", (json.dumps(list(items)), phone))
+
+
+def clear_dismissed_items(phone: str) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE users SET dismissed_items = '[]' WHERE phone = ?", (phone,))
 
 
 def set_user_reminder_hours(phone: str, hours: list[int]) -> None:

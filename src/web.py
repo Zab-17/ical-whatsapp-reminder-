@@ -408,7 +408,7 @@ CALLBACK_HTML = """
                 <p class="success-msg">Your Canvas account is connected.<br>Assignment reminders are now active.</p>
                 <div class="success-box">
                     Send <strong style="color:#fff">hi</strong> on WhatsApp to see the menu.<br>
-                    Reminders at <strong style="color:#fff">10am, 1pm, 5pm & 9pm</strong>.
+                    Reminders at <strong style="color:#fff">10am & 10pm</strong>.
                 </div>
             </div>
 
@@ -533,7 +533,7 @@ async def capture_session(request: Request):
             greeting = f"Hey {name}! " if name else ""
             whatsapp_service.send_text(
                 f"✅ *{greeting}Canvas Reminder is set up!*\n\n"
-                "You'll receive assignment reminders at 10am, 1pm, 5pm & 9pm.\n\n"
+                "You'll receive assignment reminders at 10am & 10pm.\n\n"
                 "Send *hi* to see the menu.",
                 to=phone,
             )
@@ -597,7 +597,7 @@ async def register_cookies(request: Request):
         greeting = f"Hey {name}! " if name else ""
         whatsapp_service.send_text(
             f"✅ *{greeting}Canvas Reminder is set up!*\n\n"
-            "You'll receive assignment reminders at 10am, 1pm, 5pm & 9pm.\n\n"
+            "You'll receive assignment reminders at 10am & 10pm.\n\n"
             "Send *hi* to see the menu.",
             to=phone,
         )
@@ -623,19 +623,25 @@ async def admin_dashboard(key: str):
 
     rows = ""
     valid_count = 0
+    ical_count = 0
     for u in users:
         status = "🟢 Active" if u.get("active", 1) else "🔴 Inactive"
         hours = u.get("reminder_hours", "8,20")
-        cookies_ok = check_cookies_valid(u["phone"])
-        if cookies_ok:
-            valid_count += 1
-        cookies_badge = '🟢 Valid' if cookies_ok else '🔴 Expired'
+        has_ical = bool(u.get("ical_url"))
+        if has_ical:
+            ical_count += 1
+            auth_badge = '🟣 iCal'
+        else:
+            cookies_ok = check_cookies_valid(u["phone"])
+            if cookies_ok:
+                valid_count += 1
+            auth_badge = '🟢 Cookies' if cookies_ok else '🔴 Expired'
         rows += f"""
         <tr>
             <td>{u.get('name', '—')}</td>
             <td style="font-family:'JetBrains Mono',monospace">{u['phone']}</td>
             <td>{status}</td>
-            <td>{cookies_badge}</td>
+            <td>{auth_badge}</td>
             <td>{hours}</td>
             <td>{u['created_at'][:10]}</td>
             <td>{u['last_login'][:10]}</td>
@@ -678,7 +684,11 @@ async def admin_dashboard(key: str):
                     <div class="label">Unsubscribed</div>
                 </div>
                 <div class="stat">
-                    <div class="num">{valid_count}/{len(users)}</div>
+                    <div class="num">{ical_count}</div>
+                    <div class="label">iCal Feed</div>
+                </div>
+                <div class="stat">
+                    <div class="num">{valid_count}</div>
                     <div class="label">Valid Cookies</div>
                 </div>
                 <div class="stat">
@@ -687,7 +697,7 @@ async def admin_dashboard(key: str):
                 </div>
             </div>
             <table>
-                <tr><th>Name</th><th>Phone</th><th>Status</th><th>Cookies</th><th>Reminder Hours (UTC)</th><th>Registered</th><th>Last Login</th><th>Action</th></tr>
+                <tr><th>Name</th><th>Phone</th><th>Status</th><th>Auth</th><th>Reminder Hours (UTC)</th><th>Registered</th><th>Last Login</th><th>Action</th></tr>
                 {rows}
             </table>
         </div>

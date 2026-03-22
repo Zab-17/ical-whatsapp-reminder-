@@ -4,8 +4,9 @@ import logging
 
 from datetime import timezone, timedelta
 
-from src import canvas_service
+from src import canvas_service, ical_service
 from src.models import AssignmentInfo
+from src.database import get_user_ical_url
 
 CAIRO_TZ = timezone(timedelta(hours=2))
 
@@ -19,7 +20,12 @@ MAIN_MENU_BUTTONS = [
 
 
 def route(user_input: str, phone: str) -> dict:
-    user_input = user_input.strip().lower()
+    raw_input = user_input.strip()
+    user_input = raw_input.lower()
+
+    # Detect iCal feed URL (case-sensitive check on raw input)
+    if ical_service.is_valid_ical_url(raw_input):
+        return handle_ical_registration(phone, raw_input)
 
     if user_input in ("menu", "hi", "hello", "start", "hey"):
         return handle_main_menu()
@@ -29,6 +35,12 @@ def route(user_input: str, phone: str) -> dict:
         return handle_list_courses(phone)
     if user_input == "settings":
         return handle_settings(phone)
+    if user_input.startswith("done ") or user_input.startswith("done"):
+        return handle_done(phone, user_input)
+    if user_input == "undone":
+        return handle_undone(phone)
+    if user_input.startswith("restore "):
+        return handle_restore(phone, user_input)
     if user_input.startswith("settime_"):
         return handle_set_time(phone, user_input)
     if user_input.startswith("course_"):
@@ -59,6 +71,91 @@ def route(user_input: str, phone: str) -> dict:
     return handle_main_menu()
 
 
+def handle_ical_registration(phone: str, url: str) -> dict:
+    from src.database import set_user_ical_url
+    # Verify the URL works before saving
+    try:
+        items = ical_service.fetch_upcoming_from_ical(url)
+    except Exception as e:
+        logger.error("Invalid iCal URL for %s: %s", phone, e)
+        return {
+            "body": "❌ That URL didn't work. Make sure you copied the full Calendar Feed URL from Canvas.\n\n"
+                    "Go to Canvas → Calendar → Calendar Feed (bottom right) → copy the link.",
+            "buttons": MAIN_MENU_BUTTONS,
+        }
+
+    set_user_ical_url(phone, url.strip())
+    count = len(items)
+    return {
+        "body": f"✅ *Calendar feed connected!*\n\n"
+                f"Found {count} upcoming items. Your reminders will now use this feed — no more expired sessions!\n\n"
+                f"You can still browse courses and assignments if your cookies are active.",
+        "buttons": MAIN_MENU_BUTTONS,
+    }
+
+
+def handle_done(phone: str, user_input: str) -> dict:
+    from src.database import add_dismissed_item
+    from src.reminder import get_last_reminder_items
+
+    # Parse "done 1" or "done 2"
+    parts = user_input.strip().split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        return {"body": '💡 Usage: *done 1* to mark item #1 as submitted.\nSend *undone* to see dismissed items.', "buttons": MAIN_MENU_BUTTONS}
+
+    idx = int(parts[1])
+    items = get_last_reminder_items(phone)
+    if not items or idx < 1 or idx > len(items):
+        return {"body": f"❌ Invalid number. Choose between 1 and {len(items)}.", "buttons": MAIN_MENU_BUTTONS}
+
+    item = items[idx - 1]
+    add_dismissed_item(phone, item["key"])
+    return {
+        "body": f'✅ *{item["name"]}* marked as done!\n\nYou won\'t be reminded about it anymore.\nSend *undone* to undo.',
+        "buttons": MAIN_MENU_BUTTONS,
+    }
+
+
+def handle_undone(phone: str) -> dict:
+    from src.database import get_dismissed_items
+
+    dismissed = get_dismissed_items(phone)
+    if not dismissed:
+        return {"body": "No dismissed items. Everything is active!", "buttons": MAIN_MENU_BUTTONS}
+
+    lines = ["📋 *Dismissed items:*\n"]
+    for i, key in enumerate(sorted(dismissed), 1):
+        name = key.split("|")[0]  # extract name from "name|course" key
+        lines.append(f"  {i}. {name}")
+    lines.append('\n_Reply "restore 1" to get reminders again, or "restore all" to restore everything._')
+    return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}
+
+
+def handle_restore(phone: str, user_input: str) -> dict:
+    from src.database import get_dismissed_items, remove_dismissed_item, clear_dismissed_items
+
+    parts = user_input.strip().split()
+    if len(parts) != 2:
+        return {"body": '💡 Usage: *restore 1* or *restore all*', "buttons": MAIN_MENU_BUTTONS}
+
+    if parts[1] == "all":
+        clear_dismissed_items(phone)
+        return {"body": "✅ All items restored! You'll be reminded about everything again.", "buttons": MAIN_MENU_BUTTONS}
+
+    if not parts[1].isdigit():
+        return {"body": '💡 Usage: *restore 1* or *restore all*', "buttons": MAIN_MENU_BUTTONS}
+
+    idx = int(parts[1])
+    dismissed = sorted(get_dismissed_items(phone))
+    if idx < 1 or idx > len(dismissed):
+        return {"body": f"❌ Invalid number. Choose between 1 and {len(dismissed)}.", "buttons": MAIN_MENU_BUTTONS}
+
+    key = dismissed[idx - 1]
+    name = key.split("|")[0]
+    remove_dismissed_item(phone, key)
+    return {"body": f"✅ *{name}* restored! You'll be reminded about it again.", "buttons": MAIN_MENU_BUTTONS}
+
+
 def handle_main_menu() -> dict:
     return {
         "body": "📚 *University Assignment Reminder*\n\nWhat would you like to check?",
@@ -67,8 +164,12 @@ def handle_main_menu() -> dict:
 
 
 def handle_upcoming(phone: str) -> dict:
+    ical_url = get_user_ical_url(phone)
     try:
-        items = canvas_service.get_upcoming_items(phone)
+        if ical_url:
+            items = ical_service.fetch_upcoming_from_ical(ical_url)
+        else:
+            items = canvas_service.get_upcoming_items(phone)
     except Exception as e:
         logger.error("Failed to fetch upcoming items: %s", e)
         return {"body": "❌ Failed to fetch upcoming items. Your session may have expired.\nVisit the login page to reconnect.", "buttons": MAIN_MENU_BUTTONS}
@@ -214,7 +315,7 @@ def handle_announcements(phone: str, course_id: int) -> dict:
 
 TIME_PRESETS = {
     "settime_morning": ("Morning only", [8]),
-    "settime_default": ("Default (10am,1pm,5pm,9pm)", [8, 11, 15, 19]),
+    "settime_default": ("Default (10am, 10pm)", [8, 20]),
     "settime_busy": ("Busy schedule (1pm, 9pm)", [11, 19]),
     "settime_night": ("Night owl (5pm, 9pm, 12am)", [15, 19, 22]),
     "settime_all": ("Every 3 hours", [6, 9, 12, 15, 18, 21]),
