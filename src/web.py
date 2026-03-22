@@ -117,7 +117,7 @@ LANDING_HTML = """
                 </div>
                 <button class="btn" onclick="goToStep2()">Get Started <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg></button>
                 <div class="feats">
-                    <div class="ft"><span class="i">📅</span><span>4x daily reminders</span></div>
+                    <div class="ft"><span class="i">📅</span><span>2x daily reminders</span></div>
                     <div class="ft"><span class="i">🔔</span><span>New upload alerts</span></div>
                     <div class="ft"><span class="i">📖</span><span>Browse courses</span></div>
                     <div class="ft"><span class="i">💬</span><span>WhatsApp chatbot</span></div>
@@ -126,16 +126,20 @@ LANDING_HTML = """
 
             <div id="step2" class="step">
                 <div class="s2t">Connect <em>Canvas</em></div>
-                <a href="/extension" class="btn" style="margin-bottom:18px;text-decoration:none">Download Extension <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg></a>
-                <div class="ins"><div class="n">1</div><span><b>Unzip</b> the downloaded file</span></div>
-                <div class="ins"><div class="n">2</div><span>Chrome &rarr; <b>chrome://extensions</b></span></div>
-                <div class="ins"><div class="n">3</div><span>Enable <b>Developer mode</b> (top right)</span></div>
-                <div class="ins"><div class="n">4</div><span><b>Load unpacked</b> &rarr; select folder</span></div>
-                <div class="ins"><div class="n">5</div><span>Puzzle icon &rarr; <b>Canvas Reminder</b></span></div>
-                <div class="ins"><div class="n">6</div><span>Enter name &amp; number as <b>201XXXXXXXXX</b></span></div>
-                <div class="ins"><div class="n">7</div><span><b>Open Canvas</b>, log in with AUC account</span></div>
-                <div class="ins"><div class="n ok">8</div><span>Click <b>"I'm logged in"</b> &mdash; done</span></div>
-                <div class="sec"><span style="font-size:13px;flex-shrink:0">🔒</span><p>We never see your password. The extension only reads your Canvas session cookie after you log in.</p></div>
+                <p style="color:#94a3b8;font-size:13px;margin-bottom:16px">One-time setup — works forever, no re-login needed!</p>
+                <div class="ins"><div class="n">1</div><span>Open <b>Canvas</b> in your browser (not the app)</span></div>
+                <div class="ins"><div class="n">2</div><span>Click <b>Calendar</b> in the left sidebar</span></div>
+                <div class="ins"><div class="n">3</div><span>Click <b>Calendar Feed</b> (small link, bottom right)</span></div>
+                <div class="ins"><div class="n">4</div><span><b>Copy</b> the URL from the popup</span></div>
+                <div class="ins"><div class="n ok">5</div><span><b>Send the URL</b> to us on WhatsApp — done!</span></div>
+                <div class="sec"><span style="font-size:13px;flex-shrink:0">🔒</span><p>The Calendar Feed is a read-only link to your assignments. We never see your password or login credentials.</p></div>
+                <details style="margin-top:16px;cursor:pointer">
+                    <summary style="color:#4a5f80;font-size:12px;text-transform:uppercase;letter-spacing:1px">Alternative: Chrome Extension (advanced)</summary>
+                    <div style="margin-top:12px">
+                        <p style="color:#94a3b8;font-size:12px;margin-bottom:12px">For full course browsing (assignments, quizzes, modules). Requires re-login every 1-2 days.</p>
+                        <a href="/extension" class="btn" style="margin-bottom:12px;text-decoration:none;font-size:12px;padding:8px 16px">Download Extension</a>
+                    </div>
+                </details>
             </div>
         </div>
         <div class="foot">Built for AUC students</div>
