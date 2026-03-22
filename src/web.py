@@ -29,8 +29,8 @@ LANDING_HTML = """
     <style>
         :root{--navy:#041631;--surface:rgba(6,20,42,0.65);--crimson:#c41230;--gold:#d4a843;--text:#dfe6f0;--mid:#6e83a3;--dim:#34506e}
         *{margin:0;padding:0;box-sizing:border-box}
-        html,body{height:100%;overflow:hidden}
-        body{font-family:'Cormorant Garamond',serif;background:var(--navy);color:var(--text);display:flex;align-items:center;justify-content:center}
+        html,body{min-height:100%}
+        body{font-family:'Cormorant Garamond',serif;background:var(--navy);color:var(--text);display:flex;align-items:center;justify-content:center;padding:20px 0}
 
         /* === LIVING BACKGROUND — slow morphing aurora + drifting motes === */
         canvas#bg{position:fixed;inset:0;z-index:0}
