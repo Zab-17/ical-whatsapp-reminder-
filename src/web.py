@@ -130,13 +130,27 @@ LANDING_HTML = """
                 <div class="ins"><div class="n">1</div><span>Open <b>Canvas</b> in your browser (not the app)</span></div>
                 <div class="ins"><div class="n">2</div><span>Click <b>Calendar</b> in the left sidebar</span></div>
                 <div class="ins"><div class="n">3</div><span>Click <b>Calendar Feed</b> (small link, bottom right)</span></div>
-                <div class="ins"><div class="n">4</div><span><b>Copy</b> the URL from the popup</span></div>
-                <div class="ins"><div class="n ok">5</div><span><b>Send the URL</b> to us on WhatsApp — done!</span></div>
+                <div class="ins"><div class="n ok">4</div><span><b>Copy</b> the URL and paste it below</span></div>
+                <div class="f" style="margin-top:16px">
+                    <label>Calendar Feed URL</label>
+                    <input type="url" id="ical_url" placeholder="https://aucegypt.instructure.com/feeds/calendars/user_..." style="font-size:11px">
+                    <div class="pe" id="icalError"></div>
+                </div>
+                <button class="btn" id="registerBtn" onclick="registerWithIcal()">Connect Canvas <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></button>
                 <div class="sec"><span style="font-size:13px;flex-shrink:0">🔒</span><p>The Calendar Feed is a read-only link to your assignments. We never see your password or login credentials.</p></div>
+            </div>
+
+            <div id="step3" class="step">
+                <div style="text-align:center;margin-bottom:20px">
+                    <div style="font-size:48px;margin-bottom:8px">🎉</div>
+                    <div class="s2t">You're <em>all set!</em></div>
+                    <p style="color:#94a3b8;font-size:13px;margin-top:8px" id="successMsg"></p>
+                </div>
+                <div class="sec"><span style="font-size:13px;flex-shrink:0">💡</span><p>Reply <b>"done 1"</b> to a reminder to mark an item as submitted. We'll stop reminding you about it.</p></div>
                 <details style="margin-top:16px;cursor:pointer">
-                    <summary style="color:#4a5f80;font-size:12px;text-transform:uppercase;letter-spacing:1px">Alternative: Chrome Extension (advanced)</summary>
+                    <summary style="color:#4a5f80;font-size:12px;text-transform:uppercase;letter-spacing:1px">Want full Canvas access? Get the extension</summary>
                     <div style="margin-top:12px">
-                        <p style="color:#94a3b8;font-size:12px;margin-bottom:12px">For full course browsing (assignments, quizzes, modules). Requires re-login every 1-2 days.</p>
+                        <p style="color:#94a3b8;font-size:12px;margin-bottom:12px">Browse courses, assignments with submission status, quizzes, and modules directly from WhatsApp. Requires re-login every 1-2 days.</p>
                         <a href="/extension" class="btn" style="margin-bottom:12px;text-decoration:none;font-size:12px;padding:8px 16px">Download Extension</a>
                     </div>
                 </details>
@@ -246,6 +260,49 @@ LANDING_HTML = """
 
             document.getElementById('step1').classList.remove('active');
             document.getElementById('step2').classList.add('active');
+        }
+
+        async function registerWithIcal() {
+            const name = document.getElementById('name').value.trim();
+            let phone = document.getElementById('phone').value.replace(/[\\s+\\-]/g, '').trim();
+            if (phone.startsWith('0')) phone = '20' + phone.substring(1);
+            const icalUrl = document.getElementById('ical_url').value.trim();
+            const icalError = document.getElementById('icalError');
+            const btn = document.getElementById('registerBtn');
+
+            if (!icalUrl || !icalUrl.includes('/feeds/calendars/')) {
+                icalError.style.display = 'block';
+                icalError.textContent = 'Please paste your Canvas Calendar Feed URL';
+                return;
+            }
+            icalError.style.display = 'none';
+            btn.textContent = 'Connecting...';
+            btn.disabled = true;
+
+            try {
+                const resp = await fetch('/api/register-ical', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, name, ical_url: icalUrl })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    document.getElementById('step2').classList.remove('active');
+                    document.getElementById('step3').classList.add('active');
+                    document.getElementById('successMsg').textContent =
+                        'Found ' + data.items_count + ' upcoming items. You\\'ll get reminders at 10 AM and 10 PM!';
+                } else {
+                    icalError.style.display = 'block';
+                    icalError.textContent = data.error || 'Failed to connect. Check the URL and try again.';
+                    btn.textContent = 'Connect Canvas';
+                    btn.disabled = false;
+                }
+            } catch(e) {
+                icalError.style.display = 'block';
+                icalError.textContent = 'Connection error. Try again.';
+                btn.textContent = 'Connect Canvas';
+                btn.disabled = false;
+            }
         }
 
         // Live validation on phone input
@@ -548,6 +605,62 @@ async def capture_session(request: Request):
     except Exception as e:
         logger.error("Registration failed for %s: %s", phone, e)
         return {"success": False, "error": "Login failed. Check your credentials and approve 2FA."}
+
+
+@router.post("/api/register-ical")
+async def register_ical(request: Request):
+    """Register a user with their Canvas iCal feed URL."""
+    body = await request.json()
+    phone = body.get("phone", "").replace(" ", "").replace("+", "").strip()
+    name = body.get("name", "").strip()
+    ical_url = body.get("ical_url", "").strip()
+
+    if not phone or not ical_url:
+        return {"success": False, "error": "Missing phone or calendar URL"}
+
+    if phone.startswith("0"):
+        phone = "20" + phone[1:]
+
+    import re
+    if not re.match(r"^20\d{10}$", phone):
+        return {"success": False, "error": "Phone must be format 201XXXXXXXXX"}
+
+    from src.ical_service import is_valid_ical_url, fetch_upcoming_from_ical
+    if not is_valid_ical_url(ical_url):
+        return {"success": False, "error": "Invalid Calendar Feed URL. It should look like https://...instructure.com/feeds/calendars/user_...ics"}
+
+    # Verify the URL works
+    try:
+        items = fetch_upcoming_from_ical(ical_url)
+    except Exception as e:
+        logger.error("iCal verification failed: %s", e)
+        return {"success": False, "error": "Could not fetch calendar feed. Check the URL and try again."}
+
+    # Register or update user
+    from src.database import get_user, set_user_ical_url
+    user = get_user(phone)
+    if user:
+        set_user_ical_url(phone, ical_url)
+    else:
+        add_user(phone, [], name=name)
+        set_user_ical_url(phone, ical_url)
+
+    logger.info("User %s (%s) registered via iCal web form", phone, name)
+
+    # Send welcome message
+    try:
+        greeting = f"{name}, y" if name else "Y"
+        whatsapp_service.send_text(
+            f"✅ *{greeting}ou're all set!*\n\n"
+            f"Found {len(items)} upcoming items. Reminders at 10am & 10pm Cairo time.\n\n"
+            'Reply *"done 1"* to a reminder to mark items as submitted.\n'
+            "Send *hi* to see the menu.",
+            to=phone,
+        )
+    except Exception as we:
+        logger.warning("Failed to send welcome message: %s", we)
+
+    return {"success": True, "items_count": len(items)}
 
 
 @router.get("/extension")

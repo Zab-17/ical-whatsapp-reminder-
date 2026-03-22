@@ -164,6 +164,9 @@ def handle_main_menu() -> dict:
 
 
 def handle_upcoming(phone: str) -> dict:
+    from src.database import get_dismissed_items
+    from src.reminder import _item_key, _save_last_reminder_items
+
     ical_url = get_user_ical_url(phone)
     try:
         if ical_url:
@@ -174,18 +177,27 @@ def handle_upcoming(phone: str) -> dict:
         logger.error("Failed to fetch upcoming items: %s", e)
         return {"body": "❌ Failed to fetch upcoming items. Your session may have expired.\nVisit the login page to reconnect.", "buttons": MAIN_MENU_BUTTONS}
 
+    # Filter out dismissed items
+    dismissed = get_dismissed_items(phone)
+    items = [a for a in items if _item_key(a) not in dismissed]
+
     if not items:
         return {"body": "✅ No upcoming assignments in the next 7 days!", "buttons": MAIN_MENU_BUTTONS}
 
-    grouped = _group_by_date(items)
+    # Save for "done N" reference
+    _save_last_reminder_items(phone, items)
+
     lines = ["📅 *Upcoming Due Dates*\n"]
-    for date_str, assignments in grouped.items():
-        lines.append(f"*{date_str}*")
-        for a in assignments:
-            cairo = a.due_at.astimezone(CAIRO_TZ) if a.due_at else None
-            time_str = cairo.strftime("%I:%M %p") if cairo else ""
-            lines.append(f"  • {a.name} ({a.course_name}) — {time_str}")
-        lines.append("")
+    current_date = None
+    for i, a in enumerate(items, 1):
+        cairo = a.due_at.astimezone(CAIRO_TZ) if a.due_at else None
+        date_str = cairo.strftime("%A, %b %d") if cairo else "No date"
+        if date_str != current_date:
+            current_date = date_str
+            lines.append(f"\n*{date_str}*")
+        time_str = cairo.strftime("%I:%M %p") if cairo else ""
+        lines.append(f"  {i}. {a.name} ({a.course_name}) — {time_str}")
+    lines.append(f'\n_Reply "done 1" to mark as submitted_')
 
     return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}
 
