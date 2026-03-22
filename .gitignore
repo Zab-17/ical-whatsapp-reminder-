@@ -1,4 +1,8 @@
 .env
+.env.*
+.claude/
+firebase-debug.log
+CLAUDE.md
 *.db
 *.db-shm
 *.db-wal

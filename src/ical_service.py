@@ -15,10 +15,22 @@ logger = logging.getLogger(__name__)
 
 
 def is_valid_ical_url(url: str) -> bool:
-    """Accept any URL that looks like an iCal feed."""
+    """Accept any URL that looks like an iCal feed. Blocks internal/private IPs."""
     url = url.strip()
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
+        return False
+    # Block internal/private hostnames
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        return False
+    blocked = ("localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]")
+    if hostname in blocked:
+        return False
+    # Block private IP ranges
+    if hostname.startswith(("10.", "192.168.", "172.")):
+        return False
+    if hostname.endswith(".local") or hostname.endswith(".internal"):
         return False
     # Accept .ics extension or known calendar feed paths
     if parsed.path.endswith(".ics"):
@@ -32,7 +44,9 @@ def is_valid_ical_url(url: str) -> bool:
 
 def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentInfo]:
     """Fetch iCal feed and return upcoming events within the given window."""
-    resp = httpx.get(ical_url.strip(), timeout=30, follow_redirects=True)
+    if not is_valid_ical_url(ical_url):
+        raise ValueError("Invalid or blocked iCal URL")
+    resp = httpx.get(ical_url.strip(), timeout=30, follow_redirects=False)
     resp.raise_for_status()
 
     cal = Calendar.from_ical(resp.text)
