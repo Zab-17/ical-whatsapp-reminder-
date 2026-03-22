@@ -25,11 +25,11 @@ document.addEventListener('DOMContentLoaded', function() {
       var phoneVal = document.getElementById('phone').value.replace(/[^0-9]/g, '').trim();
 
       if (!nameVal) { alert('Enter your name'); return; }
-      // Auto-fix: if starts with 0, prepend 20 (Egypt)
-      if (phoneVal.startsWith('0')) { phoneVal = '20' + phoneVal.substring(1); }
-      // Validate: must be 20 + 10 digits = 12 digits total, starting with 20
-      if (!/^20\d{10}$/.test(phoneVal)) {
-        alert('Phone must be in format: 201XXXXXXXXX\n(Country code 20 + 10-digit number)\n\nExample: 201154069714');
+      // Strip leading +
+      if (phoneVal.startsWith('+')) phoneVal = phoneVal.substring(1);
+      // Validate: E.164 standard (7-15 digits)
+      if (!/^\d{7,15}$/.test(phoneVal)) {
+        alert('Enter country code + number (7-15 digits)\n\nExamples:\n201154069714 (Egypt)\n14155551234 (US)');
         return;
       }
 

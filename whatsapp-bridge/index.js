@@ -3,6 +3,7 @@ const { Boom } = require('@hapi/boom');
 const express = require('express');
 const QRCode = require('qrcode');
 const pino = require('pino');
+const NodeCache = require('node-cache');
 
 const app = express();
 app.use(express.json());
@@ -19,6 +20,18 @@ let isConnected = false;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_DELAY = 60000; // cap at 60s
 
+// Message retry counter cache (survives socket reconnects)
+const msgRetryCounterCache = new NodeCache({ stdTTL: 600, checkperiod: 60 });
+
+// In-memory message store for retry/re-encryption handling
+const messageStore = {};
+function storeMessage(msgId, message) {
+    if (msgId && message) {
+        messageStore[msgId] = message;
+        setTimeout(() => { delete messageStore[msgId]; }, 10 * 60 * 1000);
+    }
+}
+
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
@@ -33,8 +46,15 @@ async function connectToWhatsApp() {
         logger,
         syncFullHistory: false,
         markOnlineOnConnect: true,
-        keepAliveIntervalMs: 30000, // ping WhatsApp every 30s to stay alive
+        keepAliveIntervalMs: 30000,
         retryRequestDelayMs: 2000,
+        msgRetryCounterCache,
+        generateHighQualityLinkPreview: false,
+        getMessage: async (key) => {
+            const msg = messageStore[key.id];
+            if (msg) return msg;
+            return { conversation: '' };
+        },
     });
 
     sock.ev.on('connection.update', (update) => {
@@ -76,6 +96,10 @@ async function connectToWhatsApp() {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
+            // Store all messages for retry/re-encryption
+            if (msg.key?.id && msg.message) {
+                storeMessage(msg.key.id, msg.message);
+            }
             if (msg.key.fromMe) continue;
 
             const text = msg.message?.conversation
@@ -141,6 +165,10 @@ app.post('/send', async (req, res) => {
 
     try {
         const result = await sock.sendMessage(jid, { text: message });
+        // Store for retry/re-encryption handling
+        if (result?.key?.id) {
+            storeMessage(result.key.id, { conversation: message });
+        }
         res.json({ success: true, id: result?.key?.id || 'sent' });
     } catch (err) {
         console.error('Send error:', err.message);

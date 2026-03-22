@@ -868,3 +868,202 @@ FIX — THREE LAYERS:
    - Returns error message if invalid
 
 EXAMPLE SHOWN TO USERS: 2010XXXXXXXX (masked, not a real number)
+
+
+================================================================================
+25. ADMIN KEY HARDCODED IN SOURCE — SECURITY FIX (2026-03-22)
+================================================================================
+
+GOAL: Move admin key out of source code before making repo public
+
+PROBLEM:
+- ADMIN_KEY was hardcoded as a string literal in web.py (line 755)
+- About to push code to a public GitHub repo
+- Anyone reading the source could access the admin dashboard
+
+FIX:
+- Added admin_key field to Settings (pydantic-settings) in config.py
+- Changed web.py: ADMIN_KEY = settings.admin_key (reads from env var)
+- Generated new key with secrets.token_urlsafe(32)
+- Set on Fly.io: fly secrets set ADMIN_KEY=<new_key>
+- Old key immediately stopped working after deploy
+
+KEY LEARNING:
+- fly secrets set only sets the env var — code must also be deployed
+- Setting the secret triggers a machine restart, but if the CODE still
+  has the old hardcoded key, the env var is ignored
+- Must deploy new code AND set the secret
+
+
+================================================================================
+26. SQLITE DATABASE CORRUPTION FROM SFTP UPLOAD (2026-03-22)
+================================================================================
+
+GOAL: Update a user's reminder_hours in the production database
+
+PROBLEM:
+- Downloaded DB via fly sftp get, modified locally, uploaded via fly sftp put
+- The app was RUNNING and writing to the DB while we uploaded
+- SQLite uses WAL (Write-Ahead Logging) — concurrent writes + file replacement = corruption
+- Database showed: "database disk image is malformed"
+- Integrity check: rowids out of order, missing index entries
+
+FIX:
+- Downloaded the corrupted DB
+- Ran: sqlite3 corrupted.db ".dump" | sqlite3 recovered.db
+- This exports all data as SQL statements and rebuilds a clean DB
+- Stopped the app, deleted the old DB on server, uploaded recovered DB, restarted
+
+PREVENTION:
+- NEVER upload a database file while the app is running
+- If you must modify production DB, either:
+  1. Stop the app first (fly machine stop), upload, restart
+  2. Use fly ssh console to run SQL directly (if sqlite3 is installed)
+  3. Add an admin API endpoint for the specific operation
+
+
+================================================================================
+27. PRODUCTION SCHEMA DEFAULT vs CODE DEFAULT MISMATCH (2026-03-22)
+================================================================================
+
+GOAL: Ensure new users get reminder_hours='8,20' (10am/10pm Cairo)
+
+PROBLEM:
+- database.py CREATE TABLE had: reminder_hours TEXT DEFAULT '8,20'
+- But the PRODUCTION database was created with the OLD default: '8,11,15,19'
+- SQLite does NOT update column defaults when you change the CREATE TABLE statement
+- The schema default is baked in at table creation time
+- New users inserted via add_user() relied on the schema DEFAULT
+- They got '8,11,15,19' (old 4x/day schedule) instead of '8,20'
+
+FIX:
+- Changed add_user() to explicitly set reminder_hours='8,20' in the INSERT statement
+- No longer relies on the schema DEFAULT at all
+- Migration query (UPDATE ... WHERE reminder_hours='8,11,15,19') catches existing users
+
+KEY LEARNING:
+- SQLite schema defaults are immutable after table creation
+- ALTER TABLE cannot change column defaults in SQLite
+- Always explicitly set important values in INSERT statements
+- Don't rely on schema defaults for values that might change
+
+
+================================================================================
+28. INTERNATIONAL PHONE NUMBER SUPPORT (2026-03-22)
+================================================================================
+
+GOAL: Allow non-Egyptian users to register
+
+PROBLEM:
+- Phone validation was hardcoded to Egyptian format: /^20\d{10}$/
+- Existed in FIVE places:
+  1. Landing page JS (goToStep2 function)
+  2. Landing page live validation (input event listener)
+  3. Landing page registerWithIcal() function
+  4. Chrome extension (popup.js)
+  5. Server-side /api/register-cookies endpoint
+  6. Server-side /api/register-ical endpoint
+- Non-Egyptian users got "Phone must be format 201XXXXXXXXX"
+
+FIX:
+- Changed all 6 locations to E.164 standard: /^\d{7,15}$/
+- Strips leading + before validation
+- Placeholder changed from "201XXXXXXXXX" to "+20 10XXXXXXXX"
+- Shows examples for multiple countries: +201XXXXXXXXX, +14155551234
+- inputmode changed from "numeric" to "tel" (allows + on mobile keyboard)
+
+KEY LEARNING:
+- Validation spread across 6 places = 6 places to update = easy to miss one
+- The server-side /api/register-ical was missed on first pass, causing the
+  "Phone must be format 201XXXXXXXXX" error for a user trying to register
+- Always grep the entire codebase for validation patterns before claiming "fixed"
+
+
+================================================================================
+29. GIT FILTER-BRANCH — REMOVING CO-AUTHOR FROM ENTIRE HISTORY (2026-03-22)
+================================================================================
+
+GOAL: Remove Co-Authored-By trailer from all commits before public push
+
+PROBLEM:
+- 45+ commits had "Co-Authored-By: Claude..." in the commit message
+- git commit --amend only fixes the latest commit
+- Needed to rewrite entire history
+
+SOLUTION:
+- git filter-branch -f --msg-filter 'sed "/Co-Authored-By:/d"' -- --all
+- This rewrites ALL commits, removing lines matching "Co-Authored-By:"
+- Creates backup refs in refs/original/ (clean up with git update-ref -d)
+- Must force push to all remotes after rewriting
+
+KEY LEARNING:
+- filter-branch rewrites commit hashes — force push required
+- Old refs persist in refs/original/ — clean them up
+- GitHub contributor list is cached — takes time to update after force push
+
+
+================================================================================
+30. BAILEYS "WAITING FOR THIS MESSAGE" — PHONE vs DESKTOP (2026-03-22)
+================================================================================
+
+GOAL: Fix messages showing "Waiting for this message. This may take a while."
+      on recipient's phone, while the same messages display fine on desktop
+
+SYMPTOMS:
+- Bot sends messages via Baileys
+- Messages appear correctly on WhatsApp Desktop/Web
+- Same messages show "Waiting for this message" on recipient's phone
+- Fly.io logs show: "Bad MAC Error" and "No matching sessions found"
+
+ROOT CAUSE:
+- WhatsApp phone clients use the Signal Protocol's sender-key mechanism
+  differently than linked desktop devices
+- When a phone's encryption session gets out of sync, it asks Baileys to
+  re-send the message with fresh encryption keys
+- Baileys calls getMessage(key) to retrieve the original message content
+- WITHOUT a getMessage handler, Baileys returns undefined
+- The phone never gets the decrypted content → permanent "Waiting" state
+- Desktop clients use a different session type that doesn't need retries
+
+THE FIX — THREE ADDITIONS TO makeWASocket():
+
+1. getMessage handler:
+   - When a phone requests message re-encryption, this function provides
+     the original message content from an in-memory cache
+   - Returns { conversation: '' } as fallback (prevents permanent "waiting")
+   - Code: getMessage: async (key) => messageStore[key.id] || { conversation: '' }
+
+2. msgRetryCounterCache (using node-cache):
+   - Tracks how many times each message has been retried
+   - Without it, retries loop infinitely or fail silently
+   - MUST be declared outside the socket (survives reconnects)
+   - Code: const msgRetryCounterCache = new NodeCache({ stdTTL: 600 })
+
+3. In-memory message store:
+   - Caches all sent and received messages for 10 minutes
+   - Sent messages: stored after sock.sendMessage() returns
+   - Received messages: stored in messages.upsert handler
+   - Auto-cleanup via setTimeout to prevent memory leak
+   - Code: messageStore[msgId] = message; setTimeout(() => delete..., 10*60*1000)
+
+4. generateHighQualityLinkPreview: false
+   - Disabling this avoids an extra upload step that can interfere with
+     message delivery on some devices
+
+ALSO REQUIRED:
+- npm install node-cache (new dependency)
+- Store sent messages: storeMessage(result.key.id, { conversation: message })
+- Store received messages: storeMessage(msg.key.id, msg.message)
+
+REFERENCES:
+- GitHub Issue #2297: Messages stuck on "Waiting" on iOS
+- GitHub Issue #2115: "waiting for this message" after update
+- GitHub Issue #1701: Messages never delivered
+- Baileys Official Example (example.ts) includes all three components
+
+KEY LEARNING:
+- Baileys official example.ts has getMessage, msgRetryCounterCache, and
+  message store — they're not optional, they're required for phone delivery
+- Desktop clients are more forgiving because they use different session types
+- Testing only on desktop will miss this bug entirely
+- The getMessage function is the #1 most important missing piece

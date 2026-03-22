@@ -89,7 +89,8 @@ LANDING_HTML = """
         .sec{display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:12px 14px;background:rgba(34,197,94,0.03);border:1px solid rgba(34,197,94,0.06);border-radius:10px}
         .sec p{font-family:'DM Mono',monospace;font-size:9px;color:var(--mid);line-height:1.6;letter-spacing:.2px}
 
-        .foot{text-align:center;margin-top:16px;font-family:'DM Mono',monospace;font-size:8px;color:var(--dim);letter-spacing:3px;text-transform:uppercase}
+        .foot{text-align:center;margin-top:16px;font-family:'DM Mono',monospace;font-size:8px;letter-spacing:3px;text-transform:uppercase}
+        .foot a{color:#c41230!important;text-decoration:none;font-weight:500}
 
         @media(max-height:700px){.card{padding:22px 24px 20px}.hdr{margin-bottom:14px}.hdr h1{font-size:24px}.badge{margin-bottom:10px}.feats{margin-top:12px;padding-top:10px}}
         @media(max-width:440px){.card{padding:24px 20px}.hdr h1{font-size:24px}.feats{grid-template-columns:1fr}}
@@ -112,8 +113,8 @@ LANDING_HTML = """
                 <div class="f"><label>Name</label><input type="text" id="name" placeholder="Your first name" required autocomplete="given-name"></div>
                 <div class="f">
                     <label>WhatsApp Number</label>
-                    <input type="tel" id="phone" placeholder="201XXXXXXXXX" required inputmode="numeric" autocomplete="tel">
-                    <div class="fh">Enter as <b>20</b> + number without leading 0<br><span class="ex">2010XXXXXXXX</span></div>
+                    <input type="tel" id="phone" placeholder="+20 10XXXXXXXX" required inputmode="tel" autocomplete="tel">
+                    <div class="fh">With country code<br><span class="ex">eg. +201XXXXXXXXX or +14155551234</span></div>
                     <div class="pe" id="phoneError"></div>
                 </div>
                 <button class="btn" onclick="goToStep2()">Get Started <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg></button>
@@ -165,7 +166,7 @@ LANDING_HTML = """
                 <div class="sec"><span style="font-size:13px;flex-shrink:0">💡</span><p>Reply <b>"done 1"</b> to a reminder to mark an item as done. Send more iCal URLs on WhatsApp to add more feeds!</p></div>
             </div>
         </div>
-        <div class="foot"><a href="https://github.com/Zab-17/ical-whatsapp-reminder-" style="color:var(--dim);text-decoration:none">Open Source on GitHub ⭐</a></div>
+        <div class="foot"><a href="https://github.com/Zab-17/ical-whatsapp-reminder-" style="color:#c41230;text-decoration:none;font-weight:500">Open Source on GitHub ⭐</a></div>
     </div>
 
     <!-- Animated background: aurora blobs + floating motes -->
@@ -251,15 +252,15 @@ LANDING_HTML = """
 
             if (!name) return alert('Please enter your name');
 
-            // Auto-fix: if starts with 0, prepend 20
-            if (phone.startsWith('0')) phone = '20' + phone.substring(1);
+            // Strip leading + if present
+            if (phone.startsWith('+')) phone = phone.substring(1);
 
-            // Validate format: 20 + 10 digits
-            if (!/^20\\d{10}$/.test(phone)) {
+            // Validate: at least 7 digits, at most 15 (E.164 standard)
+            if (!/^\\d{7,15}$/.test(phone)) {
                 phoneInput.classList.add('invalid');
                 phoneInput.classList.remove('valid');
                 phoneError.style.display = 'block';
-                phoneError.textContent = 'Must be 201XXXXXXXXX (12 digits starting with 20)';
+                phoneError.textContent = 'Enter country code + number (7-15 digits, no spaces or +)';
                 return;
             }
 
@@ -274,7 +275,7 @@ LANDING_HTML = """
         async function registerWithIcal() {
             const name = document.getElementById('name').value.trim();
             let phone = document.getElementById('phone').value.replace(/[\\s+\\-]/g, '').trim();
-            if (phone.startsWith('0')) phone = '20' + phone.substring(1);
+            if (phone.startsWith('+')) phone = phone.substring(1);
             const icalUrl = document.getElementById('ical_url').value.trim();
             const icalError = document.getElementById('icalError');
             const btn = document.getElementById('registerBtn');
@@ -320,16 +321,12 @@ LANDING_HTML = """
             const err = document.getElementById('phoneError');
             this.classList.remove('invalid','valid');
             err.style.display = 'none';
-            if (val.length >= 4) {
-                let check = val;
-                if (check.startsWith('0')) check = '20' + check.substring(1);
-                if (check.startsWith('20') && check.length <= 12) {
-                    if (check.length === 12) this.classList.add('valid');
-                } else if (!check.startsWith('20')) {
-                    this.classList.add('invalid');
-                    err.style.display = 'block';
-                    err.textContent = 'Must start with 20 (Egypt code)';
-                }
+            if (val.length >= 7 && val.length <= 15) {
+                this.classList.add('valid');
+            } else if (val.length > 15) {
+                this.classList.add('invalid');
+                err.style.display = 'block';
+                err.textContent = 'Too many digits (max 15)';
             }
         });
     </script>
@@ -627,12 +624,9 @@ async def register_ical(request: Request):
     if not phone or not ical_url:
         return {"success": False, "error": "Missing phone or calendar URL"}
 
-    if phone.startswith("0"):
-        phone = "20" + phone[1:]
-
     import re
-    if not re.match(r"^20\d{10}$", phone):
-        return {"success": False, "error": "Phone must be format 201XXXXXXXXX"}
+    if not re.match(r"^\d{7,15}$", phone):
+        return {"success": False, "error": "Enter country code + number (7-15 digits)"}
 
     from src.ical_service import is_valid_ical_url, fetch_upcoming_from_ical
     if not is_valid_ical_url(ical_url):
@@ -723,13 +717,12 @@ async def register_cookies(request: Request):
     if not phone or not cookies:
         return {"success": False, "error": "Missing phone or cookies"}
 
-    # Auto-fix Egyptian numbers starting with 0
-    if phone.startswith("0"):
-        phone = "20" + phone[1:]
+    # Strip leading +
+    phone = phone.lstrip("+")
 
     import re
-    if not re.match(r"^20\d{10}$", phone):
-        return {"success": False, "error": "Phone must be format 201XXXXXXXXX (country code 20 + number)"}
+    if not re.match(r"^\d{7,15}$", phone):
+        return {"success": False, "error": "Enter country code + number (7-15 digits)"}
 
     add_user(phone, cookies, name=name)
     from src.canvas_service import invalidate_client
