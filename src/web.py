@@ -648,14 +648,25 @@ async def register_ical(request: Request):
     # Send welcome message
     try:
         from src import whatsapp_service
+        from datetime import timezone, timedelta
+        CAIRO = timezone(timedelta(hours=2))
+
         greeting = f"{name}, y" if name else "Y"
-        whatsapp_service.send_text(
-            f"✅ *{greeting}ou're all set!*\n\n"
-            f"Found {len(items)} upcoming items. Reminders at 10am & 10pm Cairo time.\n\n"
-            'Reply *"done 1"* to a reminder to mark items as submitted.\n'
-            "Send *hi* to see the menu.",
-            to=phone,
-        )
+        lines = [f"✅ *{greeting}ou're all set!*\n"]
+        if items:
+            lines.append("📅 *Your upcoming deadlines:*\n")
+            for i, a in enumerate(items, 1):
+                cairo = a.due_at.astimezone(CAIRO) if a.due_at else None
+                date_str = cairo.strftime("%b %d, %I:%M %p") if cairo else "No date"
+                lines.append(f"  {i}. {a.name}")
+                lines.append(f"    📖 {a.course_name} — {date_str}")
+            lines.append("")
+        else:
+            lines.append("No upcoming assignments right now!\n")
+        lines.append("Reminders at 10am & 10pm Cairo time.")
+        lines.append('Reply *"done 1"* to mark items as submitted.')
+        lines.append("Send *hi* to see the menu.")
+        whatsapp_service.send_text("\n".join(lines), to=phone)
     except Exception as we:
         logger.warning("Failed to send welcome message: %s", we)
 
