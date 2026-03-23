@@ -1067,3 +1067,120 @@ KEY LEARNING:
 - Desktop clients are more forgiving because they use different session types
 - Testing only on desktop will miss this bug entirely
 - The getMessage function is the #1 most important missing piece
+
+
+================================================================================
+31. BAILEYS ZOMBIE DETECTION & AUTO-RECOVERY (2026-03-23)
+================================================================================
+
+GOAL: Detect and recover when Baileys silently stops delivering messages
+
+PROBLEM:
+- Baileys bridge ran with `&` in the bash start script — if Node crashed,
+  it just died silently with no restart
+- The /health endpoint only checked `isConnected` boolean, which stayed true
+  even when the WebSocket was actually dead (zombie connection)
+- Signal Protocol session keys (session-*.json, pre-key-*.json) go stale
+  after every deploy/restart, causing "Waiting for this message" on phones
+- No proactive monitoring — failures only detected when someone tried to send
+
+THE FIX — 5 LAYERS OF DETECTION:
+
+Layer 1: Auto-clear stale session keys on every startup
+- Dockerfile's start.sh runs rm -f on session-*.json, pre-key-*.json,
+  sender-key-*.json BEFORE launching Baileys
+- Prevents "Waiting for this message" after deploys/restarts
+- creds.json and app-state-* files are preserved (no QR re-scan needed)
+- Fresh encryption keys are negotiated automatically on first contact
+
+Layer 2: Auto-restart Node bridge on crash
+- Replaced bare `node index.js &` with a while-true loop in start.sh
+- If Node exits for any reason, it restarts in 5 seconds
+- No more silent deaths — crash is logged and recovered from
+
+Layer 3: Liveness check every 2 minutes (Node-side)
+- After WhatsApp connects, a setInterval runs every 2 minutes
+- Calls sock.fetchStatus() with a 10-second timeout
+- If the socket is secretly dead, this throws/timeouts
+- 2 consecutive liveness failures → force disconnect + reconnect
+- Logs "ZOMBIE DETECTED via liveness check"
+
+Layer 4: Send-time zombie detection (Node-side)
+- Before every sock.sendMessage(), checks WebSocket readyState
+- If readyState !== 1 (OPEN), rejects immediately with zombie flag
+- Tracks consecutive send failures via sendFailCount
+- 3 consecutive send failures → auto-reconnect
+- Returns {zombie: true} in error response so Python knows
+
+Layer 5: Python health monitor every 5 minutes
+- Scheduler calls bridge /health endpoint every 5 minutes
+- /health now returns: connected, socketAlive, sendFailCount,
+  lastSendSecondsAgo, lastRecvSecondsAgo
+- Python logs CRITICAL if bridge is down, WARNING if degraded
+- /health endpoint (public) includes full bridge status for debugging
+
+ALSO FIXED:
+- whatsapp_service.py _send() detects zombie response from bridge
+  and raises ConnectionError instead of silently succeeding
+- check_health() and is_healthy() functions added for programmatic checks
+- /health endpoint shows both Python scheduler status AND bridge status
+
+KEY LEARNING:
+- "Connected" is a lie — the connection.update event only fires on
+  explicit disconnects, not on silent socket death
+- WebSocket readyState is the ground truth, but Baileys doesn't always
+  expose it directly — liveness checks are the reliable fallback
+- Session keys MUST be cleared on every restart to prevent encryption
+  mismatches. The performance cost (re-negotiating keys) is negligible
+  compared to the cost of "Waiting for this message" for all users
+- Multi-layer detection is essential: no single check catches all failure
+  modes. Liveness catches zombie sockets, send-time catches send failures,
+  Python monitoring catches bridge crashes
+
+
+================================================================================
+32. CANVAS ATOM FEED — ANNOUNCEMENTS WITHOUT AUTH (2026-03-23)
+================================================================================
+
+GOAL: Let iCal-only users read Canvas announcements without cookies
+
+PROBLEM:
+- Announcements require Canvas API access (cookies/token)
+- iCal feed users chose the simpler auth-free setup
+- They couldn't access announcements at all
+
+DISCOVERY:
+- Canvas has a user Atom feed: /feeds/users/user_XXXXX.atom
+- Uses the SAME user UUID as the calendar feed: /feeds/calendars/user_XXXXX.ics
+- No authentication needed — the UUID acts as the secret
+- Returns announcements, discussions, wiki pages, assignments, calendar events
+  from ALL enrolled courses (last 7 days)
+
+THE FIX:
+- Extract user UUID from their existing calendar feed URL using regex
+- Derive the Atom feed URL automatically: /feeds/users/user_XXXXX.atom
+- Parse the Atom XML, categorize entries by type (title prefix)
+- "Announcement, CourseName: Title" → type=announcement
+- "Discussion, CourseName: Title" → type=discussion
+- "Wiki Page, CourseName: Title" → type=wiki
+- Strip HTML from content, preserve line breaks
+
+NEW COMMANDS:
+- "announcements" — shows all announcements with full content
+- "discussions" — shows all recent discussions
+- "pages" / "wiki" — shows wiki page updates
+- "canvas" / "feed" — shows everything combined
+
+AUTO-DETECTION:
+- detector.py now tracks announcement IDs in snapshot
+- New announcements trigger automatic WhatsApp notification
+- All announcements in one message (not separate messages)
+
+KEY LEARNING:
+- Canvas /feeds/ endpoints use feed_code (UUID) as authentication
+- Each entity (user, enrollment, course) has its own independent UUID
+- You CANNOT derive per-course feed codes from the user feed code
+- The user feed is the most useful: all courses, all types, one URL
+- Limitation: only last 7 days (Canvas server-side cutoff)
+- Per-course announcement feed (/feeds/announcements/) returns 15 items
+  with no time limit, but requires per-course feed codes that are hard to get

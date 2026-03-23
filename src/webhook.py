@@ -39,6 +39,23 @@ def _run_detector():
         logger.error("Scheduled detector failed: %s", e)
 
 
+def _run_health_check():
+    """Periodic health check — logs warnings if bridge is degraded or dead."""
+    try:
+        health = whatsapp_service.check_health()
+        status = health.get("status", "unknown")
+        if status == "down":
+            logger.critical("BRIDGE DOWN: WhatsApp bridge is not responding!")
+        elif status == "degraded":
+            logger.warning("BRIDGE DEGRADED: %s", health)
+        elif health.get("sendFailCount", 0) > 0:
+            logger.warning("BRIDGE FLAKY: %d consecutive send failures", health["sendFailCount"])
+        else:
+            logger.info("Bridge healthy: connected=%s, socketAlive=%s", health.get("connected"), health.get("socketAlive"))
+    except Exception as e:
+        logger.critical("BRIDGE UNREACHABLE: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Run every hour — send_all_reminders checks each user's custom schedule
@@ -47,6 +64,10 @@ async def lifespan(app: FastAPI):
 
     scheduler.add_job(_run_detector, IntervalTrigger(hours=3),
                       id="detector", replace_existing=True)
+
+    # Health check every 5 minutes
+    scheduler.add_job(_run_health_check, IntervalTrigger(minutes=5),
+                      id="health_check", replace_existing=True)
 
     scheduler.start()
     logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))
@@ -64,7 +85,9 @@ app.include_router(web_router)
 @app.get("/health")
 async def health():
     jobs = [{"id": j.id, "next_run": str(j.next_run_time)} for j in scheduler.get_jobs()]
-    return {"status": "ok", "scheduled_jobs": jobs}
+    bridge = whatsapp_service.check_health()
+    overall = "ok" if bridge.get("status") == "ok" else "degraded"
+    return {"status": overall, "bridge": bridge, "scheduled_jobs": jobs}
 
 
 @app.get("/qr")

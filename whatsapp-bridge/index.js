@@ -19,6 +19,9 @@ let qrCode = null;
 let isConnected = false;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_DELAY = 60000; // cap at 60s
+let lastMessageSentAt = 0;       // timestamp of last successful send
+let lastMessageReceivedAt = 0;   // timestamp of last received message
+let sendFailCount = 0;           // consecutive send failures
 
 // Message retry counter cache (survives socket reconnects)
 const msgRetryCounterCache = new NodeCache({ stdTTL: 600, checkperiod: 60 });
@@ -30,6 +33,36 @@ function storeMessage(msgId, message) {
         messageStore[msgId] = message;
         setTimeout(() => { delete messageStore[msgId]; }, 10 * 60 * 1000);
     }
+}
+
+let livenessInterval = null;
+
+function startLivenessCheck() {
+    if (livenessInterval) clearInterval(livenessInterval);
+
+    livenessInterval = setInterval(async () => {
+        if (!isConnected || !sock) return;
+
+        try {
+            // Try to query our own status — if socket is dead this will throw
+            await Promise.race([
+                sock.fetchStatus(sock.user?.id || '0@s.whatsapp.net').catch(() => null),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Liveness timeout')), 10000)),
+            ]);
+            console.log('Liveness check: OK');
+        } catch (err) {
+            console.error(`LIVENESS FAILED: ${err.message} — socket may be zombie`);
+            sendFailCount++;
+
+            if (sendFailCount >= 2) {
+                console.error('ZOMBIE DETECTED via liveness check. Force reconnecting...');
+                isConnected = false;
+                if (livenessInterval) clearInterval(livenessInterval);
+                try { sock.end(new Error('Liveness check failed')); } catch (_) {}
+                setTimeout(connectToWhatsApp, 3000);
+            }
+        }
+    }, 2 * 60 * 1000); // Check every 2 minutes
 }
 
 async function connectToWhatsApp() {
@@ -87,6 +120,7 @@ async function connectToWhatsApp() {
             reconnectAttempts = 0;
             qrCode = null;
             console.log('WhatsApp connected!');
+            startLivenessCheck();
         }
     });
 
@@ -100,6 +134,7 @@ async function connectToWhatsApp() {
             if (msg.key?.id && msg.message) {
                 storeMessage(msg.key.id, msg.message);
             }
+            lastMessageReceivedAt = Date.now();
             if (msg.key.fromMe) continue;
 
             const text = msg.message?.conversation
@@ -134,7 +169,20 @@ async function connectToWhatsApp() {
 // REST API
 
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', connected: isConnected });
+    const now = Date.now();
+    const sinceSend = lastMessageSentAt ? Math.round((now - lastMessageSentAt) / 1000) : null;
+    const sinceRecv = lastMessageReceivedAt ? Math.round((now - lastMessageReceivedAt) / 1000) : null;
+    const socketAlive = !!(sock && sock.ws?.readyState !== undefined ? sock.ws.readyState === 1 : isConnected);
+    const healthy = isConnected && sendFailCount < 3;
+
+    res.json({
+        status: healthy ? 'ok' : 'degraded',
+        connected: isConnected,
+        socketAlive,
+        sendFailCount,
+        lastSendSecondsAgo: sinceSend,
+        lastRecvSecondsAgo: sinceRecv,
+    });
 });
 
 app.get('/qr', async (req, res) => {
@@ -164,20 +212,37 @@ app.post('/send', async (req, res) => {
     const jid = `${phone}@s.whatsapp.net`;
 
     try {
+        // Verify socket is actually alive before sending
+        if (sock.ws && sock.ws.readyState !== undefined && sock.ws.readyState !== 1) {
+            sendFailCount++;
+            console.error(`Send failed: WebSocket not open (readyState=${sock.ws.readyState}), fail count: ${sendFailCount}`);
+            return res.status(503).json({ error: 'WhatsApp WebSocket is dead (zombie connection)', zombie: true });
+        }
+
         const result = await sock.sendMessage(jid, { text: message });
         // Store for retry/re-encryption handling
         if (result?.key?.id) {
             storeMessage(result.key.id, { conversation: message });
         }
+        lastMessageSentAt = Date.now();
+        sendFailCount = 0; // reset on success
         res.json({ success: true, id: result?.key?.id || 'sent' });
     } catch (err) {
-        console.error('Send error:', err.message);
+        sendFailCount++;
+        console.error(`Send error (fail #${sendFailCount}): ${err.message}`);
 
-        // If send fails, check if we're actually disconnected
-        if (!isConnected) {
-            return res.status(503).json({ error: 'WhatsApp disconnected during send' });
+        // If 3+ consecutive failures, flag as zombie
+        if (sendFailCount >= 3) {
+            console.error('ZOMBIE DETECTED: 3+ consecutive send failures. Attempting reconnect...');
+            isConnected = false;
+            try { sock.end(new Error('Zombie detected')); } catch (_) {}
+            setTimeout(connectToWhatsApp, 3000);
         }
-        res.status(500).json({ error: err.message });
+
+        if (!isConnected) {
+            return res.status(503).json({ error: 'WhatsApp disconnected during send', zombie: sendFailCount >= 3 });
+        }
+        res.status(500).json({ error: err.message, sendFailCount });
     }
 });
 

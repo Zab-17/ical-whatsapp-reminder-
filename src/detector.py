@@ -34,15 +34,17 @@ def detect_changes_for_user(phone: str) -> None:
 
 
 def _detect_ical_changes(phone: str, feeds: list[dict]) -> None:
-    """Detect new events in iCal feeds by comparing event keys."""
+    """Detect new events and announcements in iCal/Atom feeds."""
     snapshot = get_user_snapshot(phone)
     known_events = set(snapshot.get("ical_event_keys", []))
+    known_announcements = set(snapshot.get("ical_announcement_ids", []))
 
+    # --- Detect new calendar events ---
     try:
         items = ical_service.fetch_all_from_feeds(feeds, days=14)
     except Exception as e:
         logger.warning("Failed to fetch feeds for %s: %s", phone, e)
-        return
+        items = []
 
     current_keys = set()
     new_items = []
@@ -56,17 +58,54 @@ def _detect_ical_changes(phone: str, feeds: list[dict]) -> None:
             source = f" — {item.course_name}" if item.course_name else ""
             new_items.append(f"📝 *{item.name}*{source}\n   Due: {date_str}")
 
-    # Merge into snapshot (preserve other keys like last_reminder)
     snapshot["ical_event_keys"] = list(current_keys)
-    save_user_snapshot(phone, snapshot)
 
     if new_items:
         header = f"🔔 *{len(new_items)} new event(s) detected!*\n"
-        body = header + "\n\n".join(new_items[:10])  # cap at 10 to avoid huge messages
+        body = header + "\n\n".join(new_items[:10])
         whatsapp_service.send_text(body, to=phone)
         logger.info("Sent %d new items to %s", len(new_items), phone)
+
+    # --- Detect new announcements from Atom feed ---
+    try:
+        announcements = ical_service.fetch_announcements_from_atom(feeds)
+    except Exception as e:
+        logger.warning("Failed to fetch announcements for %s: %s", phone, e)
+        announcements = []
+
+    current_ann_ids = set()
+    new_announcements = []
+
+    for a in announcements:
+        ann_id = a.get("id", a["title"])
+        current_ann_ids.add(ann_id)
+        if ann_id not in known_announcements and known_announcements:
+            new_announcements.append(a)
+
+    snapshot["ical_announcement_ids"] = list(current_ann_ids)
+    save_user_snapshot(phone, snapshot)
+
+    if new_announcements:
+        lines = [f"📢 *{len(new_announcements)} New Announcement(s)*\n"]
+        for a in new_announcements[:5]:
+            lines.append(f"📢 *{a['title']}*")
+            meta = []
+            if a.get("course"):
+                meta.append(a["course"])
+            if a.get("author"):
+                meta.append(f"By: {a['author']}")
+            if a.get("posted_at"):
+                cairo = a["posted_at"].astimezone(CAIRO_TZ)
+                meta.append(cairo.strftime("%b %d, %I:%M %p"))
+            if meta:
+                lines.append("_" + " · ".join(meta) + "_")
+            if a.get("content"):
+                lines.append(a["content"])
+            lines.append("─" * 20)
+        whatsapp_service.send_text("\n".join(lines), to=phone)
+        logger.info("Sent %d new announcements to %s", len(new_announcements), phone)
     else:
-        logger.info("No new items for %s", phone)
+        logger.info("No new announcements for %s", phone)
 
 
 def _detect_canvas_changes(phone: str) -> None:

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 MAIN_MENU_BUTTONS = [
     {"id": "upcoming", "title": "Upcoming Events"},
+    {"id": "announcements", "title": "Announcements"},
     {"id": "feeds", "title": "My Feeds"},
     {"id": "settings", "title": "Settings"},
 ]
@@ -31,6 +32,14 @@ def route(user_input: str, phone: str) -> dict:
         return handle_main_menu()
     if user_input == "upcoming":
         return handle_upcoming(phone)
+    if user_input in ("announcements", "announce", "news"):
+        return handle_announcements_feed(phone)
+    if user_input in ("discussions", "discuss"):
+        return handle_discussions_feed(phone)
+    if user_input in ("pages", "wiki"):
+        return handle_wiki_feed(phone)
+    if user_input == "canvas" or user_input == "feed":
+        return handle_full_feed(phone)
     if user_input == "list_courses":
         return handle_list_courses(phone)
     if user_input == "settings":
@@ -197,6 +206,123 @@ def handle_main_menu() -> dict:
         "body": "📅 *Reminder Bot*\n\nWhat would you like to check?",
         "buttons": MAIN_MENU_BUTTONS,
     }
+
+
+def _format_feed_item(item: dict, emoji: str = "📢") -> str:
+    """Format a single feed item for display."""
+    lines = [f"{emoji} *{item['title']}*"]
+    meta = []
+    if item.get("course"):
+        meta.append(item["course"])
+    if item.get("author") and item["author"] != "Wiki Page":
+        meta.append(f"By: {item['author']}")
+    if item.get("posted_at"):
+        cairo = item["posted_at"].astimezone(CAIRO_TZ)
+        meta.append(cairo.strftime("%b %d, %I:%M %p"))
+    if meta:
+        lines.append("_" + " · ".join(meta) + "_")
+    if item.get("content"):
+        lines.append(item["content"])
+    return "\n".join(lines)
+
+
+def _no_canvas_feed_msg() -> dict:
+    return {"body": "This feature is only available for Canvas calendar feeds.", "buttons": MAIN_MENU_BUTTONS}
+
+
+def handle_announcements_feed(phone: str) -> dict:
+    """Show announcements from Canvas Atom feed."""
+    feeds = get_user_feeds(phone)
+    if not feeds:
+        return {"body": "No feeds connected. Send an iCal URL to get started.", "buttons": MAIN_MENU_BUTTONS}
+    if not ical_service.get_announcements_feed_url(feeds):
+        return _no_canvas_feed_msg()
+
+    announcements = ical_service.fetch_announcements_from_atom(feeds)
+    if not announcements:
+        return {"body": "📢 No recent announcements.", "buttons": MAIN_MENU_BUTTONS}
+
+    lines = [f"📢 *Announcements* ({len(announcements)})\n"]
+    for a in announcements:
+        lines.append(_format_feed_item(a, "📢"))
+        lines.append("─" * 20)
+
+    return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}
+
+
+def handle_discussions_feed(phone: str) -> dict:
+    """Show discussions from Canvas Atom feed."""
+    feeds = get_user_feeds(phone)
+    if not feeds:
+        return {"body": "No feeds connected. Send an iCal URL to get started.", "buttons": MAIN_MENU_BUTTONS}
+    if not ical_service.get_announcements_feed_url(feeds):
+        return _no_canvas_feed_msg()
+
+    discussions = ical_service.fetch_discussions_from_atom(feeds)
+    if not discussions:
+        return {"body": "💬 No recent discussions.", "buttons": MAIN_MENU_BUTTONS}
+
+    lines = [f"💬 *Discussions* ({len(discussions)})\n"]
+    for d in discussions:
+        lines.append(_format_feed_item(d, "💬"))
+        lines.append("─" * 20)
+
+    return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}
+
+
+def handle_wiki_feed(phone: str) -> dict:
+    """Show wiki page updates from Canvas Atom feed."""
+    feeds = get_user_feeds(phone)
+    if not feeds:
+        return {"body": "No feeds connected. Send an iCal URL to get started.", "buttons": MAIN_MENU_BUTTONS}
+    if not ical_service.get_announcements_feed_url(feeds):
+        return _no_canvas_feed_msg()
+
+    pages = ical_service.fetch_wiki_pages_from_atom(feeds)
+    if not pages:
+        return {"body": "📄 No recent page updates.", "buttons": MAIN_MENU_BUTTONS}
+
+    lines = [f"📄 *Page Updates* ({len(pages)})\n"]
+    for p in pages:
+        lines.append(_format_feed_item(p, "📄"))
+        lines.append("─" * 20)
+
+    return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}
+
+
+def handle_full_feed(phone: str) -> dict:
+    """Show everything from Canvas Atom feed — announcements, discussions, wiki pages."""
+    feeds = get_user_feeds(phone)
+    if not feeds:
+        return {"body": "No feeds connected. Send an iCal URL to get started.", "buttons": MAIN_MENU_BUTTONS}
+    if not ical_service.get_announcements_feed_url(feeds):
+        return _no_canvas_feed_msg()
+
+    grouped = ical_service.fetch_all_from_atom(feeds)
+    lines = ["📋 *Canvas Feed* (last 7 days)\n"]
+    total = 0
+
+    type_config = [
+        ("announcement", "📢", "Announcements"),
+        ("discussion", "💬", "Discussions"),
+        ("wiki", "📄", "Page Updates"),
+    ]
+
+    for type_key, emoji, label in type_config:
+        items = grouped.get(type_key, [])
+        if not items:
+            continue
+        total += len(items)
+        lines.append(f"\n*{emoji} {label}* ({len(items)})")
+        lines.append("")
+        for item in items:
+            lines.append(_format_feed_item(item, emoji))
+            lines.append("─" * 20)
+
+    if total == 0:
+        return {"body": "📋 No recent Canvas activity.", "buttons": MAIN_MENU_BUTTONS}
+
+    return {"body": "\n".join(lines), "buttons": MAIN_MENU_BUTTONS}
 
 
 def handle_upcoming(phone: str) -> dict:
