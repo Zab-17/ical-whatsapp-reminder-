@@ -25,19 +25,32 @@ def is_healthy() -> bool:
     return health.get("status") == "ok"
 
 
-def _send(to: str, message: str) -> dict:
+def _send(to: str, message: str, retries: int = 2) -> dict:
+    import time
     url = f"{settings.baileys_bridge_url}/send"
-    resp = httpx.post(url, json={"to": to, "message": message}, timeout=180)
-    result = resp.json()
+    last_err = None
+    for attempt in range(1, retries + 2):
+        try:
+            resp = httpx.post(url, json={"to": to, "message": message}, timeout=30)
+            result = resp.json()
 
-    # Detect zombie connection
-    if resp.status_code == 503 and result.get("zombie"):
-        logger.critical("ZOMBIE DETECTED: Bridge reports WebSocket is dead. Messages are NOT being delivered!")
-        raise ConnectionError("WhatsApp bridge zombie: messages not delivering")
+            # Detect zombie connection
+            if resp.status_code == 503 and result.get("zombie"):
+                logger.critical("ZOMBIE DETECTED: Bridge reports WebSocket is dead.")
+                raise ConnectionError("WhatsApp bridge zombie: messages not delivering")
 
-    resp.raise_for_status()
-    logger.info("Sent message to %s", to)
-    return result
+            resp.raise_for_status()
+            logger.info("Sent message to %s", to)
+            return result
+        except Exception as e:
+            last_err = e
+            if attempt <= retries:
+                wait = 3 * attempt
+                logger.warning("Send to %s failed (attempt %d/%d): %s — retrying in %ds",
+                               to, attempt, retries + 1, e, wait)
+                time.sleep(wait)
+            else:
+                raise last_err
 
 
 UNSUB_FOOTER = "\n\n_Reply *stop* to unsubscribe_"

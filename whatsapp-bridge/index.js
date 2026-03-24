@@ -22,6 +22,7 @@ const MAX_RECONNECT_DELAY = 60000; // cap at 60s
 let lastMessageSentAt = 0;       // timestamp of last successful send
 let lastMessageReceivedAt = 0;   // timestamp of last received message
 let sendFailCount = 0;           // consecutive send failures
+let isReconnecting = false;      // prevent concurrent reconnection attempts
 
 // Message retry counter cache (survives socket reconnects)
 const msgRetryCounterCache = new NodeCache({ stdTTL: 600, checkperiod: 60 });
@@ -58,14 +59,26 @@ function startLivenessCheck() {
                 console.error('ZOMBIE DETECTED via liveness check. Force reconnecting...');
                 isConnected = false;
                 if (livenessInterval) clearInterval(livenessInterval);
-                try { sock.end(new Error('Liveness check failed')); } catch (_) {}
-                setTimeout(connectToWhatsApp, 3000);
+                connectToWhatsApp();
             }
         }
     }, 2 * 60 * 1000); // Check every 2 minutes
 }
 
 async function connectToWhatsApp() {
+    if (isReconnecting) {
+        console.log('Connection attempt already in progress, skipping duplicate');
+        return;
+    }
+    isReconnecting = true;
+
+    // Close existing socket cleanly before creating a new one
+    if (sock) {
+        try { sock.ev.removeAllListeners(); sock.end(undefined); } catch (_) {}
+        sock = null;
+    }
+
+    try {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
     console.log('Using WA version:', version);
@@ -100,6 +113,7 @@ async function connectToWhatsApp() {
 
         if (connection === 'close') {
             isConnected = false;
+            isReconnecting = false; // release lock so reconnect can proceed
             const statusCode = (lastDisconnect?.error)?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             console.log('Connection closed. Status:', statusCode, '| Reconnecting:', shouldReconnect);
@@ -117,6 +131,7 @@ async function connectToWhatsApp() {
             }
         } else if (connection === 'open') {
             isConnected = true;
+            isReconnecting = false; // release lock on successful connection
             reconnectAttempts = 0;
             qrCode = null;
             console.log('WhatsApp connected!');
@@ -164,6 +179,14 @@ async function connectToWhatsApp() {
             }
         }
     });
+    } catch (err) {
+        console.error('connectToWhatsApp error:', err.message);
+        isReconnecting = false;
+        reconnectAttempts++;
+        const delay = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY);
+        console.log(`Retrying connection in ${delay / 1000}s...`);
+        setTimeout(connectToWhatsApp, delay);
+    }
 }
 
 // REST API
@@ -235,8 +258,7 @@ app.post('/send', async (req, res) => {
         if (sendFailCount >= 3) {
             console.error('ZOMBIE DETECTED: 3+ consecutive send failures. Attempting reconnect...');
             isConnected = false;
-            try { sock.end(new Error('Zombie detected')); } catch (_) {}
-            setTimeout(connectToWhatsApp, 3000);
+            connectToWhatsApp();
         }
 
         if (!isConnected) {

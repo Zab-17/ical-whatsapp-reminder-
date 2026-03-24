@@ -1184,3 +1184,72 @@ KEY LEARNING:
 - Limitation: only last 7 days (Canvas server-side cutoff)
 - Per-course announcement feed (/feeds/announcements/) returns 15 items
   with no time limit, but requires per-course feed codes that are hard to get
+
+
+================================================================================
+10. BAILEYS STATUS 440 CRASH LOOP — CONCURRENT RECONNECTION RACE
+================================================================================
+
+DATE: 2026-03-24
+
+SYMPTOM:
+- Some users got their 10am reminder, others didn't
+- Bridge logs showed rapid connect/disconnect cycle:
+    Connection closed. Status: 440 | Reconnecting: true
+    WhatsApp connected!
+    Connection closed. Status: 440 | Reconnecting: true  (instantly)
+- Eventually crashed with: Error: Timed Out (uploadPreKeysToServerIfRequired)
+- Bridge exited with code 1, auto-restart loop continued the problem
+
+ROOT CAUSE:
+- Status 440 = "conflict: replaced" — WhatsApp sees multiple simultaneous
+  connections with the same session credentials and kills one
+- connectToWhatsApp() was called from THREE places without any mutex:
+  1. connection.update 'close' handler (schedules setTimeout reconnect)
+  2. Liveness check (calls sock.end + setTimeout connectToWhatsApp)
+  3. Send failure handler (calls sock.end + setTimeout connectToWhatsApp)
+- When bridge disconnected, multiple reconnect paths fired simultaneously,
+  each creating a new socket before the old one fully closed
+- Each new socket triggered WhatsApp to kill the previous one (440),
+  which triggered another reconnect, creating an infinite loop
+- The Timed Out crash was downstream: socket couldn't stabilize long enough
+  to complete the pre-key upload handshake
+
+WHY SOME USERS GOT REMINDERS AND OTHERS DIDN'T:
+- send_all_reminders() processes users sequentially in DB row order
+- Bridge was intermittently up between crash cycles
+- Users processed during a brief "connected" window got their reminders
+- Users processed during a crash/zombie moment did not
+- The 180s send timeout made it worse: a hung send blocked all subsequent users
+
+FIX (3 parts):
+
+1. Bridge reconnection lock (whatsapp-bridge/index.js):
+   - Added `isReconnecting` flag checked at top of connectToWhatsApp()
+   - If already reconnecting, skip duplicate attempt
+   - Old socket cleaned up BEFORE creating new one (removeAllListeners + end)
+   - Lock released on: successful connection, connection close, or error
+   - All reconnect callers (liveness, send failure) now call connectToWhatsApp()
+     directly instead of manually closing socket + setTimeout — the function
+     handles the lock and cleanup itself
+
+2. Send retry with reduced timeout (src/whatsapp_service.py):
+   - Timeout reduced from 180s to 30s (message send should never take 3 min)
+   - Added automatic retry (up to 3 attempts with 3s/6s exponential backoff)
+   - Transient bridge hiccups no longer permanently fail a user
+
+3. Failed user retry (src/reminder.py):
+   - Users that fail during the main reminder loop are collected
+   - After the loop, failed users retried once after 15s delay
+   - Gives bridge time to recover if it was briefly disconnected
+
+KEY LEARNINGS:
+- Baileys status 440 means "conflict: replaced" — NEVER have two sockets
+  with the same auth credentials. Always close old socket before new one.
+- Any function called from multiple async paths needs a guard/lock
+- 180s timeout on a message send is insane — 30s is plenty
+- Sequential processing with long timeouts compounds failures: if user A
+  hangs for 60s, user B is delayed 60s, user C delayed 120s, etc.
+- Always add retry logic at BOTH levels: individual send AND batch loop
+- When debugging "some users affected, some not", check processing ORDER
+  vs. time of failure — it's usually a sequential loop hitting a transient issue

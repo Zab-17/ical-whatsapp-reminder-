@@ -44,9 +44,11 @@ def get_last_reminder_items(phone: str) -> list[dict]:
 
 
 def send_all_reminders() -> None:
+    import time
     current_hour = datetime.now(timezone.utc).hour
     users = get_active_users()
     logger.info("Reminder check at %d:00 UTC for %d active users", current_hour, len(users))
+    failed = []
     for user in users:
         try:
             user_hours = get_user_reminder_hours(user["phone"])
@@ -56,6 +58,17 @@ def send_all_reminders() -> None:
                 logger.info("Skipping %s — not in their schedule (%s)", user["phone"], user_hours)
         except Exception as e:
             logger.error("Reminder failed for %s: %s", user["phone"], e)
+            failed.append(user)
+
+    # Retry failed users once after a short delay
+    if failed:
+        logger.info("Retrying %d failed users in 15s...", len(failed))
+        time.sleep(15)
+        for user in failed:
+            try:
+                send_reminder_for_user(user["phone"], user.get("name", ""))
+            except Exception as e:
+                logger.error("Retry also failed for %s: %s", user["phone"], e)
 
 
 def send_reminder_for_user(phone: str, name: str = "") -> None:
