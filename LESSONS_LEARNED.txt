@@ -1253,3 +1253,61 @@ KEY LEARNINGS:
 - Always add retry logic at BOTH levels: individual send AND batch loop
 - When debugging "some users affected, some not", check processing ORDER
   vs. time of failure — it's usually a sequential loop hitting a transient issue
+
+
+================================================================================
+11. ICAL PARSING — MISSING ASSIGNMENTS + PREKEY DEPLOY BUG
+================================================================================
+
+DATE: 2026-03-26
+
+PROBLEM 1: iCal feed not showing all upcoming assignments
+SYMPTOM: Bot only returned 2 events when users had more assignments upcoming.
+
+ROOT CAUSE (two issues):
+a) The code used DTSTART for the due date, but Canvas assignment VEVENTs use
+   DTSTART as the due date for assignments. The earlier "fix" of preferring DTEND
+   was wrong — for all-day events, DTEND is the *exclusive* end (day AFTER the
+   due date). Reverted to: DTSTART for VEVENTs, DUE for VTODOs.
+b) The default upcoming window was 10 days. Canvas iCal feeds include events
+   beyond 7 days server-side, so widening to 30 days catches more.
+c) Date-only events were stored in CAIRO_TZ but compared against UTC `now`.
+   While Python handles cross-tz comparison, normalising to UTC first is cleaner
+   and avoids edge cases at midnight boundaries.
+
+FIX:
+- VEVENT: use DTSTART (Canvas due date) with DTEND as fallback
+- VTODO: use DUE property with DTSTART as fallback
+- Normalise date-only events to UTC after setting 11:59 PM Cairo
+- Widen default window from 10 → 30 days
+- Added diagnostic logging: "iCal feed: X total, Y upcoming, Z past, W beyond"
+
+RESULT: Users went from 2 events → 6-18 events depending on their courses.
+
+---
+
+PROBLEM 2: All incoming messages fail after deploy
+SYMPTOM: Bot connected to WhatsApp successfully but couldn't decrypt any
+incoming messages. Logs showed repeated:
+    PreKeyError: Invalid PreKey ID
+    SessionError: No session record
+
+ROOT CAUSE: The start.sh script cleared pre-key-*.json files on every deploy:
+    rm -f $AUTH_DIR/session-*.json $AUTH_DIR/pre-key-*.json $AUTH_DIR/sender-key-*.json
+Pre-keys are published to WhatsApp servers — remote devices reference them by ID.
+Deleting them means the bridge no longer has the keys that remote devices expect.
+Sessions and sender-keys are per-conversation and can be re-negotiated, but
+pre-keys are identity-level and must persist.
+
+FIX: Stop deleting pre-key-*.json on startup. Only clear session and sender-key files:
+    rm -f $AUTH_DIR/session-*.json $AUTH_DIR/sender-key-*.json
+
+KEY LEARNINGS:
+- Signal Protocol pre-keys are uploaded to the server and referenced by remote
+  devices. Deleting them breaks ALL incoming encryption until keys re-negotiate.
+- Session keys (session-*.json) are per-conversation — safe to clear on restart.
+- Sender keys (sender-key-*.json) are for group encryption — safe to clear.
+- Pre-keys (pre-key-*.json) are IDENTITY keys — NEVER delete them.
+- After a bad deploy that deleted pre-keys, recovery requires waiting for
+  WhatsApp to re-exchange keys (usually resolves within minutes).
+- Always test incoming message flow after deploys, not just outgoing.
