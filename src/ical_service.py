@@ -55,15 +55,23 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentIn
 
     items = []
     for component in cal.walk():
-        if component.name != "VEVENT":
+        if component.name not in ("VEVENT", "VTODO"):
             continue
 
         summary = str(component.get("SUMMARY", ""))
-        dtstart = component.get("DTSTART")
-        if not dtstart:
+
+        # Determine the due date — Canvas assignments use DTEND as the due date,
+        # while DTSTART is when the assignment was published/opened.
+        # VTODO components use DUE instead.
+        due_prop = (
+            component.get("DTEND")
+            or component.get("DUE")
+            or component.get("DTSTART")
+        )
+        if not due_prop:
             continue
 
-        due_at = dtstart.dt
+        due_at = due_prop.dt
         is_date_only = not isinstance(due_at, datetime)
         # icalendar may return date (not datetime) — convert to datetime
         if is_date_only:
