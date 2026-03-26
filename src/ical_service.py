@@ -42,7 +42,7 @@ def is_valid_ical_url(url: str) -> bool:
     return False
 
 
-def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentInfo]:
+def fetch_upcoming_from_ical(ical_url: str, days: int = 14) -> list[AssignmentInfo]:
     """Fetch iCal feed and return upcoming events within the given window."""
     if not is_valid_ical_url(ical_url):
         raise ValueError("Invalid or blocked iCal URL")
@@ -121,7 +121,7 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentIn
     return items
 
 
-def fetch_all_from_feeds(feeds: list[dict], days: int = 10) -> list[AssignmentInfo]:
+def fetch_all_from_feeds(feeds: list[dict], days: int = 14) -> list[AssignmentInfo]:
     """Fetch and merge upcoming items from multiple feeds."""
     all_items = []
     for feed in feeds:

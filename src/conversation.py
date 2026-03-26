@@ -299,7 +299,7 @@ def handle_full_feed(phone: str) -> dict:
         return _no_canvas_feed_msg()
 
     grouped = ical_service.fetch_all_from_atom(feeds)
-    lines = ["📋 *Canvas Feed* (last 7 days)\n"]
+    lines = ["📋 *Canvas Feed* (last 14 days)\n"]
     total = 0
 
     type_config = [
@@ -344,7 +344,7 @@ def handle_upcoming(phone: str) -> dict:
     items = [a for a in items if _item_key(a) not in dismissed]
 
     if not items:
-        return {"body": "✅ No upcoming events in the next 7 days!", "buttons": MAIN_MENU_BUTTONS}
+        return {"body": "✅ No upcoming events in the next 14 days!", "buttons": MAIN_MENU_BUTTONS}
 
     # Save for "done N" reference
     _save_last_reminder_items(phone, items)

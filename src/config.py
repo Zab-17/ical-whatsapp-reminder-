@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     admin_key: str = ""
 
     # Settings
-    upcoming_days: int = 10
+    upcoming_days: int = 14
 
 
 settings = Settings()

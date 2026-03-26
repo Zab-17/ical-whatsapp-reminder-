@@ -92,7 +92,7 @@ def send_reminder_for_user(phone: str, name: str = "") -> None:
 
     greeting = f"Hey {name}! " if name else ""
     if not items:
-        body = f"☀️ *{greeting}No upcoming events in the next 7 days!*"
+        body = f"☀️ *{greeting}No upcoming events in the next 14 days!*"
         whatsapp_service.send_button_message(body, MAIN_MENU_BUTTONS, to=phone)
     else:
         # Save numbered list for "done N" lookups
