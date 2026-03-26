@@ -1279,7 +1279,7 @@ FIX:
 - VEVENT: use DTSTART (Canvas due date) with DTEND as fallback
 - VTODO: use DUE property with DTSTART as fallback
 - Normalise date-only events to UTC after setting 11:59 PM Cairo
-- Widen default window from 10 → 30 days
+- Keep default window at 10 days (30 was too overwhelming for users)
 - Added diagnostic logging: "iCal feed: X total, Y upcoming, Z past, W beyond"
 
 RESULT: Users went from 2 events → 6-18 events depending on their courses.
