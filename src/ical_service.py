@@ -42,7 +42,7 @@ def is_valid_ical_url(url: str) -> bool:
     return False
 
 
-def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentInfo]:
+def fetch_upcoming_from_ical(ical_url: str, days: int = 30) -> list[AssignmentInfo]:
     """Fetch iCal feed and return upcoming events within the given window."""
     if not is_valid_ical_url(ical_url):
         raise ValueError("Invalid or blocked iCal URL")
@@ -53,22 +53,29 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentIn
     now = datetime.now(timezone.utc)
     cutoff = now + timedelta(days=days)
 
+    total_components = 0
+    skipped_past = 0
+    skipped_future = 0
+    skipped_no_date = 0
     items = []
     for component in cal.walk():
         if component.name not in ("VEVENT", "VTODO"):
             continue
+        total_components += 1
 
         summary = str(component.get("SUMMARY", ""))
 
-        # Determine the due date — Canvas assignments use DTEND as the due date,
-        # while DTSTART is when the assignment was published/opened.
-        # VTODO components use DUE instead.
-        due_prop = (
-            component.get("DTEND")
-            or component.get("DUE")
-            or component.get("DTSTART")
-        )
+        # Pick the best "due date" property.
+        # Canvas VEVENTs: DTSTART = due date for assignments.
+        # For all-day events DTEND is the *exclusive* end (day after), so
+        # prefer DTSTART.  VTODO uses DUE.
+        if component.name == "VTODO":
+            due_prop = component.get("DUE") or component.get("DTSTART")
+        else:
+            due_prop = component.get("DTSTART") or component.get("DTEND")
         if not due_prop:
+            skipped_no_date += 1
+            logger.debug("Skipped (no date): %s", summary)
             continue
 
         due_at = due_prop.dt
@@ -76,14 +83,20 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentIn
         # icalendar may return date (not datetime) — convert to datetime
         if is_date_only:
             # Date-only event (e.g., Canvas assignments) — set to 11:59 PM Cairo
+            # then normalise to UTC so the comparison below is always UTC vs UTC
             due_at = datetime.combine(due_at, datetime.min.time(), tzinfo=CAIRO_TZ)
-            due_at = due_at.replace(hour=23, minute=59)
+            due_at = due_at.replace(hour=23, minute=59).astimezone(timezone.utc)
         elif due_at.tzinfo is not None:
             due_at = due_at.astimezone(timezone.utc)
         else:
             due_at = due_at.replace(tzinfo=timezone.utc)
 
-        if not (now <= due_at <= cutoff):
+        if due_at < now:
+            skipped_past += 1
+            continue
+        if due_at > cutoff:
+            skipped_future += 1
+            logger.debug("Skipped (beyond %d days): %s — due %s", days, summary, due_at)
             continue
 
         event_name, source_name = _parse_summary(summary, str(component.get("DESCRIPTION", "")))
@@ -99,11 +112,16 @@ def fetch_upcoming_from_ical(ical_url: str, days: int = 10) -> list[AssignmentIn
             date_only=is_date_only,
         ))
 
+    logger.info(
+        "iCal feed: %d total events, %d upcoming, %d past, %d beyond %dd, %d no-date",
+        total_components, len(items), skipped_past, skipped_future, days, skipped_no_date,
+    )
+
     items.sort(key=lambda a: a.due_at or datetime.max.replace(tzinfo=timezone.utc))
     return items
 
 
-def fetch_all_from_feeds(feeds: list[dict], days: int = 10) -> list[AssignmentInfo]:
+def fetch_all_from_feeds(feeds: list[dict], days: int = 30) -> list[AssignmentInfo]:
     """Fetch and merge upcoming items from multiple feeds."""
     all_items = []
     for feed in feeds:
